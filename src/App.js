@@ -116,52 +116,6 @@ export default function App() {
           <p>No leagues found for this user.</p>
         ) : (
           <ul className="space-y-3">
-            <h2 style={{ textAlign: 'center' }}>Waivers</h2>
-            {waivers.map((week, weekIdx) => {
-              if (!week || week.length === 0) return null;
-              return (
-                <div key={`week-${weekIdx}`}>
-                  <h2 style={{ textAlign: 'center' }} className="text-xl font-bold my-3">Week {weekIdx + 1}</h2>
-
-                  {week.map((player, playerIdx) => {
-                    const key = `${weekIdx}-${playerIdx}-${player.status}`;
-
-                    if (!containsOnlyLetters(Object.keys(player.adds))) {
-                      return (
-                        <li
-                          key={key}
-                          className="p-3 rounded-md shadow-md bg-gray-100"
-                        >
-                          <h2 className="font-semibold">Player Waiver</h2>
-                          <p>Team: {teams[parseInt(player.consenter_ids[0])]}</p>
-                          <p>Added: {players[Object.keys(player.adds)]?.full_name}</p>
-                          {player.drops !== null && (
-                            <p>Dropped: {players[Object.keys(player.drops)]?.full_name}</p>
-                          )}
-                          <p>Bid: {player.settings.waiver_bid}</p>
-                        </li>
-                      );
-                    }
-
-                    return (
-                      <li
-                        key={key}
-                        className="p-3 rounded-md shadow-md bg-gray-100"
-                      >
-                        <h2 className="font-semibold">Defensive Waiver</h2>
-                        <p>Team: {teams[parseInt(player.consenter_ids[0])]}</p>
-                        <p>Added: {players[Object.keys(player.adds)]?.team}</p>
-                        {player.drops !== null && (
-                          <p>Dropped: {players[Object.keys(player.drops)]?.team}</p>
-                        )}
-                        <p>Bid: {player.settings.waiver_bid}</p>
-                      </li>
-                    );
-                  })}
-                </div>)
-            })}
-
-
             <h2 style={{ textAlign: 'center' }}>Trades</h2>
             <Container>
               {trades.map((week, weekIdx) => {
@@ -292,9 +246,39 @@ export default function App() {
                 );
               })}
             </Container>
+            <h2 style = {{textAlign: 'center'}}>Trade Notes</h2>
+            <p>Brinkworth Covers:</p>
+            <ul>Njoku's 2026 contract</ul>
+            <ul>Bucky's 2026 contract</ul>
+            <ul>MHJ's 2026 contract</ul>
+            <p>Peter Covers:</p>
+            <ul>$50 of Tee Higgins in 2026</ul>
+            <p>Townsend Covers:</p>
+            <ul>$13 in 2026 and $25 in 2027 of James Williams</ul>
+            <p>Luo Covers:</p>
+            <ul>$15 of Javonte Williams' 2026 contract</ul>
+            <p>Rossi Covers:</p>
+            <ul>N/A</ul>
+            <p>Sierant Covers:</p>
+            <ul>N/A</ul>
+            <p>Yajur Covers:</p>
+            <ul>N/A</ul>
+            <p>Maher Covers:</p>
+            <ul>N/A</ul>
+            <p>Peter Covers:</p>
+            <ul>N/A</ul>
+            <p>Ben Covers:</p>
+            <ul>N/A</ul>
+            <br></br>
+            <br></br>
+            <br></br>
+            <br></br>
           </ul>
+          
         )}
+        
       </main>
+      
     </div>
   );
 }
