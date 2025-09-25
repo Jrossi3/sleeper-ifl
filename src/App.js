@@ -254,7 +254,7 @@ export default function App() {
             <p>Peter Covers:</p>
             <ul>$50 of Tee Higgins in 2026</ul>
             <p>Townsend Covers:</p>
-            <ul>$13 in 2026 and $25 in 2027 of James Williams</ul>
+            <ul>$13 in 2026 and $25 in 2027 of Jameson Williams</ul>
             <p>Luo Covers:</p>
             <ul>$15 of Javonte Williams' 2026 contract</ul>
             <p>Rossi Covers:</p>
