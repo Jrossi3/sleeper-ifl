@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/sleeper-ifl/static/css/main.e6c13ad2.css",
+    "main.js": "/sleeper-ifl/static/js/main.b0a1ed7e.js",
+    "static/js/453.59bb561b.chunk.js": "/sleeper-ifl/static/js/453.59bb561b.chunk.js",
+    "index.html": "/sleeper-ifl/index.html",
+    "main.e6c13ad2.css.map": "/sleeper-ifl/static/css/main.e6c13ad2.css.map",
+    "main.b0a1ed7e.js.map": "/sleeper-ifl/static/js/main.b0a1ed7e.js.map",
+    "453.59bb561b.chunk.js.map": "/sleeper-ifl/static/js/453.59bb561b.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.e6c13ad2.css",
+    "static/js/main.b0a1ed7e.js"
+  ]
+}
