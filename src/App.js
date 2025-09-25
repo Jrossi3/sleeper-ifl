@@ -117,18 +117,7 @@ export default function App() {
           <p>No leagues found for this user.</p>
         ) : (
           <ul className="space-y-3">
-            {/* {leagues
-              .filter((league) => league.name === "The International Football League")
-              .map((league) => (
-                <li
-                  key={league.league_id}
-                  className="p-3 rounded-md shadow-md bg-gray-100"
-                >
-                  <p>Sport: {league.sport}</p>
-                  <p>Season: {league.season}</p>
-                  <p>Status: {league.status}</p>
-                </li>
-              ))} */}
+            <h2 style={{ textAlign: 'center' }}>Waivers</h2>
             {waivers.map((week, weekIdx) => {
               if (!week || week.length === 0) return null;
               return (
