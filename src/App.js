@@ -69,14 +69,14 @@ export default function App() {
 
     fetchTrades();
   }, []);
-  console.log("hello part 2")
+
   useEffect(() => {
     let fetched = false;
 
     const fetchTransactions = async () => {
       if (fetched) return;
       fetched = true;
-      console.log("hello")
+
       try {
         for (let i = 1; i < weeks; i++) {
           const res = await fetch(
@@ -87,7 +87,6 @@ export default function App() {
           json = json.filter((league) => league.status === "complete");
           totalWaivers.push(json.filter((league) => league.type === "waiver"));
           totalTrades.push(json.filter((league) => league.type === "trade"));
-          console.log(json)
         }
 
         setWaivers(totalWaivers);
@@ -187,7 +186,7 @@ export default function App() {
 
                         const teamOne = Object.values(trade.consenter_ids ?? {})[0];
                         const teamTwo = Object.values(trade.consenter_ids ?? {})[1];
-                        console.log(trade.consenter_ids, 'IDs')
+
                         if (trade.adds) {
                           for (let i = 0; i < Object.keys(trade.adds).length; i++) {
                             if (Object.values(trade.adds)[i] === teamOne) {
@@ -195,7 +194,6 @@ export default function App() {
                             } else if (Object.values(trade.adds)[i] === teamTwo) {
                               team2.push(Object.keys(trade.adds)[i]);
                             } else {
-                              console.log(Object.values(trade.adds)[i], 'here', trade.consenter_ids)
                               team3.push(Object.keys(trade.adds)[i]);
                             }
                           }
