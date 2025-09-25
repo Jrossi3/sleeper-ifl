@@ -36,3 +36,15 @@
     transform: rotate(360deg);
   }
 }
+
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* Creates 3 equal-width columns */
+  gap: 20px; /* Space between grid items */
+}
+
+.grid-item {
+  padding: 10px;
+  border: 1px solid #ccc;
+  text-align: center;
+}
