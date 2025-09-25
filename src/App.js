@@ -180,17 +180,23 @@ export default function App() {
                       {week.map((trade, tradeIdx) => {
                         let team1 = [];
                         let team2 = [];
+                        let team3 = [];
                         let draft1 = [];
                         let draft2 = [];
+                        let draft3 = [];
 
-                        const teamOne = Object.values(trade.adds ?? {})[0];
-
+                        const teamOne = Object.values(trade.consenter_ids ?? {})[0];
+                        const teamTwo = Object.values(trade.consenter_ids ?? {})[1];
+                        console.log(trade.consenter_ids, 'IDs')
                         if (trade.adds) {
                           for (let i = 0; i < Object.keys(trade.adds).length; i++) {
                             if (Object.values(trade.adds)[i] === teamOne) {
                               team1.push(Object.keys(trade.adds)[i]);
-                            } else {
+                            } else if (Object.values(trade.adds)[i] === teamTwo) {
                               team2.push(Object.keys(trade.adds)[i]);
+                            } else {
+                              console.log(Object.values(trade.adds)[i], 'here', trade.consenter_ids)
+                              team3.push(Object.keys(trade.adds)[i]);
                             }
                           }
                         }
@@ -199,8 +205,10 @@ export default function App() {
                           for (let i = 0; i < Object.keys(trade.draft_picks).length; i++) {
                             if (trade.draft_picks[i].owner_id === teamOne) {
                               draft1.push(trade.draft_picks[i]);
-                            } else {
+                            } else if (trade.draft_picks[i].owner_id === teamTwo) {
                               draft2.push(trade.draft_picks[i]);
+                            } else {
+                              draft3.push(trade.draft_picks[i]);
                             }
                           }
                         }
@@ -218,7 +226,7 @@ export default function App() {
                               <h2 className="font-semibold">Trade</h2>
 
                               {trade.adds && (
-                                <p>Team 1: {teams[parseInt(Object.values(trade.adds)[0])]}</p>
+                                <p>Team 1: {teams[parseInt(Object.values(trade.consenter_ids)[0])]}</p>
                               )}
 
                               {trade.adds &&
@@ -238,7 +246,7 @@ export default function App() {
 
                               {trade.adds && (
                                 <p>
-                                  Team 2: {teams[parseInt(Object.values(trade.drops ?? {})[0])]}
+                                  Team 2: {teams[parseInt(Object.values(trade.consenter_ids)[1])]}
                                 </p>
                               )}
 
@@ -251,6 +259,27 @@ export default function App() {
 
                               {trade.draft_picks &&
                                 draft2.map((pick, i) => (
+                                  <p key={`d2-${i}`}>
+                                    {pick.season} Round {pick.round} via{" "}
+                                    {teams[pick.roster_id]}
+                                  </p>
+                                ))}
+
+                              {trade.consenter_ids.length === 3 && (
+                                <p>
+                                  Team 3: {teams[parseInt(Object.values(trade.consenter_ids)[2])]}
+                                </p>
+                              )}
+
+                              {trade.consenter_ids.length === 3 &&
+                                team3.map((playerId) => (
+                                  <p key={playerId}>
+                                    {players[playerId]?.full_name ?? playerId}
+                                  </p>
+                                ))}
+
+                              {trade.consenter_ids.length === 3 &&
+                                draft3.map((pick, i) => (
                                   <p key={`d2-${i}`}>
                                     {pick.season} Round {pick.round} via{" "}
                                     {teams[pick.roster_id]}
