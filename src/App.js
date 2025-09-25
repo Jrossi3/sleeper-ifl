@@ -88,7 +88,7 @@ export default function App() {
           totalWaivers.push(json.filter((league) => league.type === "waiver"));
           totalTrades.push(json.filter((league) => league.type === "trade"));
         }
-
+        console.log(totalTrades)
         setWaivers(totalWaivers);
         setTrades(totalTrades);
       } catch (err) {
@@ -100,7 +100,6 @@ export default function App() {
 
     fetchTransactions();
   }, []);
-
 
   function containsOnlyLetters(str) {
     return /^[A-Za-z]*$/.test(str);
@@ -221,7 +220,7 @@ export default function App() {
                             <div className="p-3 rounded-md shadow-md bg-gray-100 h-100">
                               <h2 className="font-semibold">Trade</h2>
 
-                              {trade.adds && (
+                              {(trade.adds || trade.draft_picks) && (
                                 <p>Team 1: {teams[parseInt(Object.values(trade.consenter_ids)[0])]}</p>
                               )}
 
@@ -240,7 +239,7 @@ export default function App() {
                                   </p>
                                 ))}
 
-                              {trade.adds && (
+                              {(trade.adds || trade.draft_picks) && (
                                 <p>
                                   Team 2: {teams[parseInt(Object.values(trade.consenter_ids)[1])]}
                                 </p>
