@@ -48,3 +48,20 @@
   border: 1px solid #ccc;
   text-align: center;
 }
+
+.custom-table th,
+.custom-table td {
+  border: 1px solid #444;
+  padding: 8px;
+}
+
+.custom-table th {
+  background-color: #222;
+  color: white;
+}
+
+.custom-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+}
