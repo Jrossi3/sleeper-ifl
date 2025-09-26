@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 
+const BACKEND_URL = "https://your-backend-url.com"; // replace with Render backend URL
+
 export default function App() {
-  const [leagues, setLeagues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [waivers, setWaivers] = useState([]);
   const [trades, setTrades] = useState([]);
@@ -34,26 +35,6 @@ export default function App() {
       year: "numeric",
     });
 
-  const containsOnlyLetters = (str) => /^[A-Za-z]*$/.test(str);
-
-  // Fetch leagues
-  useEffect(() => {
-    const fetchLeagues = async () => {
-      try {
-        const res = await fetch(
-          `https://api.sleeper.app/v1/user/${userId}/leagues/${sport}/${season}`
-        );
-        const json = await res.json();
-        setLeagues(json);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchLeagues();
-  }, []);
-
   // Fetch players
   useEffect(() => {
     const fetchPlayers = async () => {
@@ -63,8 +44,6 @@ export default function App() {
         setPlayers(json);
       } catch (err) {
         console.error(err);
-      } finally {
-        setLoading(false);
       }
     };
     fetchPlayers();
@@ -73,10 +52,10 @@ export default function App() {
   // Fetch trades, waivers, and notes
   useEffect(() => {
     const fetchTransactionsAndNotes = async () => {
+      setLoading(true);
       let totalWaivers = [];
       let totalTrades = [];
       try {
-        // Fetch transactions from Sleeper
         for (let i = 1; i < weeks; i++) {
           const res = await fetch(
             `https://api.sleeper.app/v1/league/${leagueId}/transactions/${i}`
@@ -87,11 +66,10 @@ export default function App() {
           totalTrades.push(completed.filter((t) => t.type === "trade"));
         }
 
-        // Fetch saved notes from backend
-        const notesRes = await fetch("http://localhost:5001/api/trades/notes");
+        // Fetch saved notes
+        const notesRes = await fetch(`${BACKEND_URL}/api/trades/notes`);
         const notesMap = await notesRes.json();
 
-        // Merge notes into trades
         const tradesWithNotes = totalTrades.map((week) =>
           week.map((trade) => ({
             ...trade,
@@ -107,11 +85,9 @@ export default function App() {
         setLoading(false);
       }
     };
-
     fetchTransactionsAndNotes();
   }, []);
 
-  // Handle single note change
   const handleNotesChange = (e, tradeId) => {
     const newNotes = e.target.value;
     setTrades((prevTrades) =>
@@ -125,31 +101,28 @@ export default function App() {
     );
   };
 
-  // Save single trade note on blur
   const handleNotesBlur = async (tradeId) => {
     const trade = trades.flat().find((t) => t.transaction_id === tradeId);
     if (!trade) return;
-
     try {
-      await fetch(`http://localhost:5001/api/trades/${tradeId}/notes`, {
+      await fetch(`${BACKEND_URL}/api/trades/${tradeId}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: trade.notes }),
       });
     } catch (err) {
-      console.error("Failed to save note:", err);
+      console.error(err);
     }
   };
 
-  // Batch save all notes
   const saveAllNotes = async () => {
     const notesToSave = {};
     trades.flat().forEach((trade) => {
-      if (trade.notes) notesToSave[trade.transaction_id] = trade.notes;
+      notesToSave[trade.transaction_id] = trade.notes || "";
     });
 
     try {
-      await fetch("http://localhost:5001/api/trades/notes/batch", {
+      await fetch(`${BACKEND_URL}/api/trades/notes/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: notesToSave }),
@@ -179,7 +152,6 @@ export default function App() {
           <p>Loading Transactions...</p>
         ) : (
           <div>
-            {/* Trades Table */}
             {trades.map((week, weekIdx) =>
               week.length === 0 ? null : (
                 <div key={`week-${weekIdx}`} className="my-4">
