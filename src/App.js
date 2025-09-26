@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 
-const BACKEND_URL = "https://your-backend-url.com"; // replace with Render backend URL
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL; // Set this in Vercel
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -16,26 +16,15 @@ export default function App() {
   const weeks = 18;
 
   const teams = {
-    1: "Townsend",
-    2: "Sierant",
-    3: "Luo",
-    4: "Yash",
-    5: "Maher",
-    6: "Ben",
-    7: "Yajur",
-    8: "Rossi",
-    9: "Brinkworth",
-    10: "Peter",
+    1: "Townsend", 2: "Sierant", 3: "Luo", 4: "Yash",
+    5: "Maher", 6: "Ben", 7: "Yajur", 8: "Rossi",
+    9: "Brinkworth", 10: "Peter",
   };
 
-  const formatDate = (ms) =>
-    new Date(ms).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+  const formatDate = (ms) => new Date(ms).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric"
+  });
 
-  // Fetch players
   useEffect(() => {
     const fetchPlayers = async () => {
       try {
@@ -49,7 +38,6 @@ export default function App() {
     fetchPlayers();
   }, []);
 
-  // Fetch trades, waivers, and notes
   useEffect(() => {
     const fetchTransactionsAndNotes = async () => {
       setLoading(true);
@@ -57,24 +45,18 @@ export default function App() {
       let totalTrades = [];
       try {
         for (let i = 1; i < weeks; i++) {
-          const res = await fetch(
-            `https://api.sleeper.app/v1/league/${leagueId}/transactions/${i}`
-          );
+          const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/transactions/${i}`);
           const json = await res.json();
           const completed = json.filter((t) => t.status === "complete");
           totalWaivers.push(completed.filter((t) => t.type === "waiver"));
           totalTrades.push(completed.filter((t) => t.type === "trade"));
         }
 
-        // Fetch saved notes
         const notesRes = await fetch(`${BACKEND_URL}/api/trades/notes`);
         const notesMap = await notesRes.json();
 
         const tradesWithNotes = totalTrades.map((week) =>
-          week.map((trade) => ({
-            ...trade,
-            notes: notesMap[trade.transaction_id] || "",
-          }))
+          week.map((trade) => ({ ...trade, notes: notesMap[trade.transaction_id] || "" }))
         );
 
         setWaivers(totalWaivers);
@@ -93,9 +75,7 @@ export default function App() {
     setTrades((prevTrades) =>
       prevTrades.map((week) =>
         week.map((trade) =>
-          trade.transaction_id === tradeId
-            ? { ...trade, notes: newNotes }
-            : trade
+          trade.transaction_id === tradeId ? { ...trade, notes: newNotes } : trade
         )
       )
     );
@@ -117,10 +97,7 @@ export default function App() {
 
   const saveAllNotes = async () => {
     const notesToSave = {};
-    trades.flat().forEach((trade) => {
-      notesToSave[trade.transaction_id] = trade.notes || "";
-    });
-
+    trades.flat().forEach((trade) => notesToSave[trade.transaction_id] = trade.notes || "");
     try {
       await fetch(`${BACKEND_URL}/api/trades/notes/batch`, {
         method: "POST",
@@ -141,29 +118,20 @@ export default function App() {
           The International Football League
         </h1>
 
-        <button
-          onClick={saveAllNotes}
-          style={{ marginBottom: "20px", padding: "10px 20px" }}
-        >
+        <button onClick={saveAllNotes} style={{ marginBottom: "20px", padding: "10px 20px" }}>
           Save All Notes
         </button>
 
-        {loading ? (
-          <p>Loading Transactions...</p>
-        ) : (
+        {loading ? <p>Loading Transactions...</p> : (
           <div>
             {trades.map((week, weekIdx) =>
               week.length === 0 ? null : (
-                <div key={`week-${weekIdx}`} className="my-4">
+                <div key={weekIdx} className="my-4">
                   <h3 style={{ textAlign: "center" }}>Week {weekIdx + 1}</h3>
                   <table className="custom-table">
                     <thead>
                       <tr>
-                        <th>Date</th>
-                        <th>Team</th>
-                        <th>Players</th>
-                        <th>Draft Picks</th>
-                        <th>Notes</th>
+                        <th>Date</th><th>Team</th><th>Players</th><th>Draft Picks</th><th>Notes</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -187,27 +155,15 @@ export default function App() {
                         }
 
                         return (
-                          <React.Fragment key={`trade-${weekIdx}-${tradeIdx}`}>
+                          <React.Fragment key={tradeIdx}>
                             {teamIds.map((teamId, i) => (
                               <tr key={i}>
-                                {i === 0 && (
-                                  <td rowSpan={teamIds.length}>
-                                    {formatDate(trade.created)}
-                                  </td>
-                                )}
+                                {i === 0 && <td rowSpan={teamIds.length}>{formatDate(trade.created)}</td>}
                                 <td>{teams[teamId]}</td>
-                                <td>
-                                  {playerGroups[i].map((pid) => (
-                                    <div key={pid}>{players[pid]?.full_name ?? pid}</div>
-                                  ))}
-                                </td>
-                                <td>
-                                  {draftGroups[i].map((pick, idx) => (
-                                    <div key={idx}>
-                                      {pick.season} Round {pick.round} via {teams[pick.roster_id]}
-                                    </div>
-                                  ))}
-                                </td>
+                                <td>{playerGroups[i].map((pid) => <div key={pid}>{players[pid]?.full_name ?? pid}</div>)}</td>
+                                <td>{draftGroups[i].map((pick, idx) => (
+                                  <div key={idx}>{pick.season} Round {pick.round} via {teams[pick.roster_id]}</div>
+                                ))}</td>
                                 {i === 0 && (
                                   <td rowSpan={teamIds.length}>
                                     <textarea

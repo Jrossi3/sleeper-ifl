@@ -6,16 +6,16 @@ const cors = require("cors");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors()); // allow all origins (or restrict in production)
 app.use(bodyParser.json());
 
-// PostgreSQL connection from environment variable
+// PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, // required for Render/Heroku
+  ssl: { rejectUnauthorized: false },
 });
 
-// Create table if not exists
+// Create table if it doesn’t exist
 pool.query(`
 CREATE TABLE IF NOT EXISTS trade_notes (
   transaction_id TEXT PRIMARY KEY,
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS trade_notes (
 );
 `).catch(console.error);
 
-// Get all notes
+// GET all notes
 app.get("/api/trades/notes", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM trade_notes");
@@ -39,7 +39,7 @@ app.get("/api/trades/notes", async (req, res) => {
   }
 });
 
-// Save a single trade note
+// POST single note
 app.post("/api/trades/:transactionId/notes", async (req, res) => {
   const { transactionId } = req.params;
   const { notes } = req.body;
@@ -61,12 +61,10 @@ app.post("/api/trades/:transactionId/notes", async (req, res) => {
   }
 });
 
-// Batch save multiple notes
+// POST batch notes
 app.post("/api/trades/notes/batch", async (req, res) => {
   const { notes } = req.body;
-  if (!notes || typeof notes !== "object") {
-    return res.status(400).json({ error: "Invalid notes format" });
-  }
+  if (!notes || typeof notes !== "object") return res.status(400).json({ error: "Invalid notes" });
 
   try {
     const client = await pool.connect();
@@ -98,6 +96,4 @@ app.post("/api/trades/notes/batch", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
