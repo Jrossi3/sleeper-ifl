@@ -1,30 +1,40 @@
+// backend/server.js
 const express = require("express");
-const { Pool } = require("pg");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const { Pool } = require("pg");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-app.use(cors()); // allow all origins (or restrict in production)
+// Middleware
+app.use(cors());
 app.use(bodyParser.json());
 
 // PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
-// Create table if it doesn’t exist
-pool.query(`
-CREATE TABLE IF NOT EXISTS trade_notes (
-  transaction_id TEXT PRIMARY KEY,
-  notes TEXT,
-  updated_at TIMESTAMPTZ
-);
-`).catch(console.error);
+// Ensure table exists
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS trade_notes (
+        transaction_id TEXT PRIMARY KEY,
+        notes TEXT
+      );
+    `);
+    console.log("✅ trade_notes table ready");
+  } catch (err) {
+    console.error("Error creating table:", err);
+  }
+})();
 
-// GET all notes
+// Routes
+
+// Get all notes
 app.get("/api/trades/notes", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM trade_notes");
@@ -34,12 +44,11 @@ app.get("/api/trades/notes", async (req, res) => {
     });
     res.json(notesMap);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST single note
+// Save single note
 app.post("/api/trades/:transactionId/notes", async (req, res) => {
   const { transactionId } = req.params;
   const { notes } = req.body;
@@ -47,53 +56,56 @@ app.post("/api/trades/:transactionId/notes", async (req, res) => {
   try {
     await pool.query(
       `
-      INSERT INTO trade_notes (transaction_id, notes, updated_at)
-      VALUES ($1, $2, NOW())
-      ON CONFLICT (transaction_id)
-      DO UPDATE SET notes = EXCLUDED.notes, updated_at = NOW()
+      INSERT INTO trade_notes (transaction_id, notes)
+      VALUES ($1, $2)
+      ON CONFLICT (transaction_id) DO UPDATE SET notes = EXCLUDED.notes
       `,
       [transactionId, notes]
     );
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST batch notes
+// Save multiple notes
 app.post("/api/trades/notes/batch", async (req, res) => {
-  const { notes } = req.body;
-  if (!notes || typeof notes !== "object") return res.status(400).json({ error: "Invalid notes" });
+  const { notes } = req.body; // { transaction_id: note }
+
+  if (!notes || typeof notes !== "object") {
+    return res.status(400).json({ error: "Invalid notes format" });
+  }
 
   try {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      for (const [transaction_id, note] of Object.entries(notes)) {
+
+      for (const [transactionId, note] of Object.entries(notes)) {
         await client.query(
           `
-          INSERT INTO trade_notes (transaction_id, notes, updated_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (transaction_id)
-          DO UPDATE SET notes = EXCLUDED.notes, updated_at = NOW()
+          INSERT INTO trade_notes (transaction_id, notes)
+          VALUES ($1, $2)
+          ON CONFLICT (transaction_id) DO UPDATE SET notes = EXCLUDED.notes
           `,
-          [transaction_id, note]
+          [transactionId, note]
         );
       }
+
       await client.query("COMMIT");
       res.json({ success: true });
     } catch (err) {
       await client.query("ROLLBACK");
-      console.error(err);
-      res.status(500).json({ error: err.message });
+      throw err;
     } finally {
       client.release();
     }
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
