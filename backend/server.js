@@ -14,7 +14,9 @@ app.use(bodyParser.json());
 // PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  ssl: {
+    rejectUnauthorized: false, // allow self-signed / required SSL
+  },
 });
 
 // Ensure table exists
