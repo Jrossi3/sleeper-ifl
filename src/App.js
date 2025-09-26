@@ -70,12 +70,13 @@ export default function App() {
     fetchPlayers();
   }, []);
 
-  // Fetch trades & waivers
+  // Fetch trades, waivers, and notes
   useEffect(() => {
-    const fetchTransactions = async () => {
+    const fetchTransactionsAndNotes = async () => {
       let totalWaivers = [];
       let totalTrades = [];
       try {
+        // Fetch transactions from Sleeper
         for (let i = 1; i < weeks; i++) {
           const res = await fetch(
             `https://api.sleeper.app/v1/league/${leagueId}/transactions/${i}`
@@ -85,36 +86,29 @@ export default function App() {
           totalWaivers.push(completed.filter((t) => t.type === "waiver"));
           totalTrades.push(completed.filter((t) => t.type === "trade"));
         }
+
+        // Fetch saved notes from backend
+        const notesRes = await fetch("http://localhost:5001/api/trades/notes");
+        const notesMap = await notesRes.json();
+
+        // Merge notes into trades
+        const tradesWithNotes = totalTrades.map((week) =>
+          week.map((trade) => ({
+            ...trade,
+            notes: notesMap[trade.transaction_id] || "",
+          }))
+        );
+
         setWaivers(totalWaivers);
-        setTrades(totalTrades);
+        setTrades(tradesWithNotes);
       } catch (err) {
         console.error(err);
       } finally {
         setLoading(false);
       }
     };
-    fetchTransactions();
-  }, []);
 
-  // Fetch all notes once trades are loaded
-  useEffect(() => {
-    const fetchAllNotes = async () => {
-      try {
-        const res = await fetch("http://localhost:5001/api/trades/notes");
-        const notesMap = await res.json();
-        setTrades((prevTrades) =>
-          prevTrades.map((week) =>
-            week.map((trade) => ({
-              ...trade,
-              notes: notesMap[trade.transaction_id] || "",
-            }))
-          )
-        );
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    if (trades.length > 0) fetchAllNotes();
+    fetchTransactionsAndNotes();
   }, []);
 
   // Handle single note change
@@ -131,7 +125,7 @@ export default function App() {
     );
   };
 
-  // Handle single note blur save
+  // Save single trade note on blur
   const handleNotesBlur = async (tradeId) => {
     const trade = trades.flat().find((t) => t.transaction_id === tradeId);
     if (!trade) return;
@@ -143,7 +137,7 @@ export default function App() {
         body: JSON.stringify({ notes: trade.notes }),
       });
     } catch (err) {
-      console.error(err);
+      console.error("Failed to save note:", err);
     }
   };
 
