@@ -114,10 +114,10 @@ export default function App() {
                             {teamIds.map((teamId, i) => (
                               <tr 
                               key={i}
-                              style={ i === teamIds.length - 1 
-                                ? { borderBottom: "10px solid #444" }   // darker line after each trade
-                                : {} 
-                              }
+                              // style={ i === teamIds.length - 1 
+                              //   ? { borderBottom: "10px solid #444" }  // darker line after each trade
+                              //   : {} 
+                              // }
                               >
                                 {i === 0 && <td rowSpan={teamIds.length}>{formatDate(trade.created)}</td>}
                                 <td>{teams[teamId]}</td>
