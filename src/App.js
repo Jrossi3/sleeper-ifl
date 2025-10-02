@@ -115,7 +115,7 @@ export default function App() {
                               <tr 
                               key={i}
                               style={ i === teamIds.length - 1 
-                                ? { borderBottom: "3px solid #444" }   // darker line after each trade
+                                ? { borderBottom: "10px solid #444" }   // darker line after each trade
                                 : {} 
                               }
                               >
