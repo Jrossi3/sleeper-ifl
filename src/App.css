@@ -51,8 +51,11 @@
 
 .custom-table th,
 .custom-table td {
-  border: 1px solid #444;
-  padding: 8px;
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  word-wrap: break-word;
 }
 
 .custom-table th {
@@ -63,5 +66,46 @@
 .custom-table {
   width: 100%;
   border-collapse: collapse;
-  text-align: center;
+  margin-top: 1rem;
+  font-size: 14px;
+}
+
+/* Container that allows horizontal scrolling on small devices */
+.custom-table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.custom-table thead th {
+  background-color: #222;
+  font-weight: bold;
+}
+
+.custom-table tr:nth-child(even) {
+  background-color: #fafafa;
+}
+
+/* Stronger separation between trades */
+.trade-separator td {
+  border-bottom: 3px solid #444;
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 600px) {
+  .custom-table {
+    font-size: 12px; /* smaller text */
+  }
+
+  .custom-table th,
+  .custom-table td {
+    padding: 4px 6px; /* tighter padding */
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+
+  h3 {
+    font-size: 16px;
+  }
 }
