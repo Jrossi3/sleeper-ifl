@@ -12,9 +12,9 @@ export default function App() {
   const weeks = 18;
 
   const teams = {
-    1: "Townsend", 2: "Sierant", 3: "Luo", 4: "Yash",
-    5: "Maher", 6: "Ben", 7: "Yajur", 8: "Rossi",
-    9: "Brinkworth", 10: "Peter",
+    1: "Key West Pirates", 2: "Chamonix Alpines", 3: "Shanghai Warrior Monks", 4: "New Delhi Penguins",
+    5: "Galway Potato Farmers", 6: "The London Merchants", 7: "Alamo City Renegades", 8: "Hiroshima Kamikazes",
+    9: "Glasgow Highlanders", 10: "Midtown Rainmakers",
   };
 
   const formatDate = (ms) => new Date(ms).toLocaleDateString("en-US", {
