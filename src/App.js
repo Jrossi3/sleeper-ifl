@@ -7,10 +7,7 @@ export default function App() {
   const [trades, setTrades] = useState([]);
   const [players, setPlayers] = useState([]);
   let Database = require('./data.json');
-  console.log(Database)
-  const userId = "1054571285751156736";
   const sport = "nfl";
-  const season = "2025";
   const leagueId = "1181024367924011008";
   const weeks = 18;
 
@@ -27,7 +24,7 @@ export default function App() {
   useEffect(() => {
     const fetchPlayers = async () => {
       try {
-        const res = await fetch(`https://api.sleeper.app/v1/players/nfl`);
+        const res = await fetch(`https://api.sleeper.app/v1/players/${sport}`);
         const json = await res.json();
         setPlayers(json);
       } catch (err) {
@@ -50,12 +47,9 @@ export default function App() {
           totalWaivers.push(completed.filter((t) => t.type === "waiver"));
           totalTrades.push(completed.filter((t) => t.type === "trade"));
         }
-        console.log(totalTrades)
         for (let i = 0; i < totalTrades.length; i++){
           for (let x = 0; x < totalTrades[i].length; x++){
-            console.log(totalTrades[i][x].transaction_id, i, x)
             for (let db = 0; db < Database.length; db++){
-              console.log(totalTrades[i][x].transaction_id, Database[db].transactionId, i, x, db)
               if (totalTrades[i][x].transaction_id === Database[db].transactionId){
                 totalTrades[i][x].notes = Database[db].notes
               }
@@ -113,7 +107,8 @@ export default function App() {
                             if (idx >= 0) draftGroups[idx].push(pick);
                           });
                         }
-
+                        list.push({"transactionId": trade.transaction_id, "notes": ""})
+                        
                         return (
                           <React.Fragment key={tradeIdx}>
                             {teamIds.map((teamId, i) => (
@@ -131,7 +126,6 @@ export default function App() {
                                       style={{ width: "100%", minHeight: "50px" }}
                                     >
                                       {trade.notes || "No Notes"}
-                                      {/* {list.push({"transactionId": trade.transaction_id, "notes": ""})} */}
                                       
                                       </div>
                                   </td>
