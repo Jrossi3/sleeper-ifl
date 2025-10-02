@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL; // Set this in Vercel
-
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [waivers, setWaivers] = useState([]);
   const [trades, setTrades] = useState([]);
   const [players, setPlayers] = useState([]);
-
+  let Database = require('./data.json');
+  console.log(Database)
   const userId = "1054571285751156736";
   const sport = "nfl";
   const season = "2025";
@@ -39,7 +38,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const fetchTransactionsAndNotes = async () => {
+    const fetchTransactions = async () => {
       setLoading(true);
       let totalWaivers = [];
       let totalTrades = [];
@@ -51,65 +50,30 @@ export default function App() {
           totalWaivers.push(completed.filter((t) => t.type === "waiver"));
           totalTrades.push(completed.filter((t) => t.type === "trade"));
         }
-
-        const notesRes = await fetch(`${BACKEND_URL}/api/trades/notes`);
-        const notesMap = await notesRes.json();
-
-        const tradesWithNotes = totalTrades.map((week) =>
-          week.map((trade) => ({ ...trade, notes: notesMap[trade.transaction_id] || "" }))
-        );
-
+        console.log(totalTrades)
+        for (let i = 0; i < totalTrades.length; i++){
+          for (let x = 0; x < totalTrades[i].length; x++){
+            console.log(totalTrades[i][x].transaction_id, i, x)
+            for (let db = 0; db < Database.length; db++){
+              console.log(totalTrades[i][x].transaction_id, Database[db].transactionId, i, x, db)
+              if (totalTrades[i][x].transaction_id === Database[db].transactionId){
+                totalTrades[i][x].notes = Database[db].notes
+              }
+            }
+          }
+        }
         setWaivers(totalWaivers);
-        setTrades(tradesWithNotes);
+        setTrades(totalTrades);
       } catch (err) {
         console.error(err);
       } finally {
         setLoading(false);
       }
     };
-    fetchTransactionsAndNotes();
+    fetchTransactions();
   }, []);
 
-  const handleNotesChange = (e, tradeId) => {
-    const newNotes = e.target.value;
-    setTrades((prevTrades) =>
-      prevTrades.map((week) =>
-        week.map((trade) =>
-          trade.transaction_id === tradeId ? { ...trade, notes: newNotes } : trade
-        )
-      )
-    );
-  };
-
-  const handleNotesBlur = async (tradeId) => {
-    const trade = trades.flat().find((t) => t.transaction_id === tradeId);
-    if (!trade) return;
-    try {
-      await fetch(`${BACKEND_URL}/api/trades/${tradeId}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: trade.notes }),
-      });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const saveAllNotes = async () => {
-    const notesToSave = {};
-    trades.flat().forEach((trade) => notesToSave[trade.transaction_id] = trade.notes || "");
-    try {
-      await fetch(`${BACKEND_URL}/api/trades/notes/batch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: notesToSave }),
-      });
-      alert("All notes saved!");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to save notes");
-    }
-  };
+  var list = []
 
   return (
     <div>
@@ -117,10 +81,6 @@ export default function App() {
         <h1 className="text-2xl font-bold mb-4" style={{ textAlign: "center" }}>
           The International Football League
         </h1>
-
-        <button onClick={saveAllNotes} style={{ marginBottom: "20px", padding: "10px 20px" }}>
-          Save All Notes
-        </button>
 
         {loading ? <p>Loading Transactions...</p> : (
           <div>
@@ -165,13 +125,15 @@ export default function App() {
                                   <div key={idx}>{pick.season} Round {pick.round} via {teams[pick.roster_id]}</div>
                                 ))}</td>
                                 {i === 0 && (
-                                  <td rowSpan={teamIds.length}>
-                                    <textarea
-                                      value={trade.notes || ""}
-                                      onChange={(e) => handleNotesChange(e, trade.transaction_id)}
-                                      onBlur={() => handleNotesBlur(trade.transaction_id)}
+                                  <td 
+                                  rowSpan={teamIds.length}>
+                                    <div
                                       style={{ width: "100%", minHeight: "50px" }}
-                                    />
+                                    >
+                                      {trade.notes || "No Notes"}
+                                      {/* {list.push({"transactionId": trade.transaction_id, "notes": ""})} */}
+                                      
+                                      </div>
                                   </td>
                                 )}
                               </tr>
@@ -187,6 +149,7 @@ export default function App() {
           </div>
         )}
       </main>
+      {console.log(list)}
     </div>
   );
 }
