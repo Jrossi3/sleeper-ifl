@@ -47,15 +47,15 @@ export default function App() {
           totalWaivers.push(completed.filter((t) => t.type === "waiver"));
           totalTrades.push(completed.filter((t) => t.type === "trade"));
         }
-        for (let i = 0; i < totalTrades.length; i++){
-          for (let x = 0; x < totalTrades[i].length; x++){
-            for (let db = 0; db < Database.length; db++){
-              if (totalTrades[i][x].transaction_id === Database[db].transactionId){
-                totalTrades[i][x].notes = Database[db].notes
-              }
-            }
-          }
-        }
+        const dbMap = Object.fromEntries(Database.map(d => [d.transactionId, d.notes]));
+
+        totalTrades = totalTrades.map(tradeGroup =>
+          tradeGroup.map(trade => ({
+            ...trade,
+            notes: dbMap[trade.transaction_id] ?? trade.notes
+          }))
+        );
+
         setWaivers(totalWaivers);
         setTrades(totalTrades);
       } catch (err) {
@@ -108,7 +108,7 @@ export default function App() {
                           });
                         }
                         list.push({"transactionId": trade.transaction_id, "notes": ""})
-                        
+
                         return (
                           <React.Fragment key={tradeIdx}>
                             {teamIds.map((teamId, i) => (
