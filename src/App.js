@@ -112,7 +112,13 @@ export default function App() {
                         return (
                           <React.Fragment key={tradeIdx}>
                             {teamIds.map((teamId, i) => (
-                              <tr key={i}>
+                              <tr 
+                              key={i}
+                              style={ i === teamIds.length - 1 
+                                ? { borderBottom: "3px solid #444" }   // darker line after each trade
+                                : {} 
+                              }
+                              >
                                 {i === 0 && <td rowSpan={teamIds.length}>{formatDate(trade.created)}</td>}
                                 <td>{teams[teamId]}</td>
                                 <td>{playerGroups[i].map((pid) => <div key={pid}>{players[pid]?.full_name ?? pid}</div>)}</td>
