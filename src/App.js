@@ -107,43 +107,33 @@ export default function App() {
                             if (idx >= 0) draftGroups[idx].push(pick);
                           });
                         }
+                        list.push({"transactionId": trade.transaction_id, "notes": ""})
 
-                        // Build rows: one for each player, one for each draft pick
-                        const rows = [];
-                        teamIds.forEach((teamId, i) => {
-                          playerGroups[i].forEach((pid) => {
-                            rows.push({
-                              teamId,
-                              player: players[pid]?.full_name ?? pid,
-                              pick: null,
-                            });
-                          });
-                          draftGroups[i].forEach((pick) => {
-                            rows.push({
-                              teamId,
-                              player: null,
-                              pick: `${pick.season} Round ${pick.round} via ${teams[pick.roster_id]}`,
-                            });
-                          });
-                        });
-
-                        list.push({ transactionId: trade.transaction_id, notes: "" });
-                        {console.log(rows)}
                         return (
                           <React.Fragment key={tradeIdx}>
-                            {rows.map((row, rowIdx) => (
-                              <tr key={rowIdx}>
-                                {rowIdx === 0 && (
-                                  <td rowSpan={rows.length}>{formatDate(trade.created)}</td>
-                                )}
-                                <td>{teams[row.teamId]}</td>
-                                <td>{row.player ? <div>{row.player}</div> : null}</td>
-                                <td>{row.pick ? <div>{row.pick}</div> : null}</td>
-                                {rowIdx === 0 && (
-                                  <td rowSpan={rows.length}>
-                                    <div style={{ width: "100%", minHeight: "50px" }}>
+                            {teamIds.map((teamId, i) => (
+                              <tr 
+                              key={i}
+                              // style={ i === teamIds.length - 1 
+                              //   ? { borderBottom: "10px solid #444" }  // darker line after each trade
+                              //   : {} 
+                              // }
+                              >
+                                {i === 0 && <td rowSpan={teamIds.length}>{formatDate(trade.created)}</td>}
+                                <td>{teams[teamId]}</td>
+                                <td>{playerGroups[i].map((pid) => <div key={pid}>{players[pid]?.full_name ?? pid}</div>)}</td>
+                                <td>{draftGroups[i].map((pick, idx) => (
+                                  <div key={idx}>{pick.season} Round {pick.round} via {teams[pick.roster_id]}</div>
+                                ))}</td>
+                                {i === 0 && (
+                                  <td 
+                                  rowSpan={teamIds.length}>
+                                    <div
+                                      style={{ width: "100%", minHeight: "50px" }}
+                                    >
                                       {trade.notes || "No Notes"}
-                                    </div>
+                                      
+                                      </div>
                                   </td>
                                 )}
                               </tr>
@@ -152,7 +142,6 @@ export default function App() {
                         );
                       })}
                     </tbody>
-
                   </table>
                 </div>
               )
