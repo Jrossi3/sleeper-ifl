@@ -17,7 +17,7 @@ function Dropdown({ options, onSelect }) {
   return (
     <div className="dropdown">
       <div className="dropdown-header" onClick={toggleDropdown}>
-        <span>{selectedOption ? selectedOption.label : 'Select an option'}</span>
+        <span>{selectedOption ? selectedOption.label : 'Select a team'}</span>
         <span className={`arrow ${isOpen ? 'up' : 'down'}`}></span>
       </div>
 

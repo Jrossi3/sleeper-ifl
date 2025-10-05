@@ -73,7 +73,7 @@ export default function App() {
           const json = await res.json();
           const completed = json.filter((t) => t.status === "complete");
           totalWaivers.push(completed.filter((t) => t.type === "waiver"));
-          totalTrades.push(completed.filter((t) => t.type === "trade"));
+          totalTrades.push(completed.filter((t) => t.type === "trade").reverse());
         }
         const dbMap = Object.fromEntries(Database.map(d => [d.transactionId, d.notes]));
 
