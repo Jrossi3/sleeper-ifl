@@ -7,7 +7,7 @@ export default function App() {
   const [waivers, setWaivers] = useState([]);
   const [trades, setTrades] = useState([]);
   const [players, setPlayers] = useState([]);
-  const [newTeam, setNewTeam] = useState("")
+  const [newTeam, setNewTeam] = useState("All Teams")
   let Database = require('./data.json');
   const sport = "nfl";
   const leagueId = "1181024367924011008";
