@@ -8,14 +8,18 @@ export default function App() {
   const [trades, setTrades] = useState([]);
   const [players, setPlayers] = useState([]);
   const [newTeam, setNewTeam] = useState("All Teams")
+  const [leagueId, setLeagueId] = useState("1181024367924011008")
   let Database = require('./data.json');
   const sport = "nfl";
-  const leagueId = "1181024367924011008";
+  const leagueId2023 = "991037254564958208";
+  const leagueId2024 = "1048193774259703808";
+  const leagueId2025 = "1181024367924011008";
+
   const weeks = 18;
 
-  const dropdownOptions = [
-    { label: "All Teams"},
-    { label: "Key West Pirates"},
+  const dropdownTeamOptions = [
+    { label: "All Teams" },
+    { label: "Key West Pirates" },
     { label: "Chamonix Alpines" },
     { label: "Shanghai Warrior Monks" },
     { label: "New Delhi Penguins" },
@@ -27,18 +31,34 @@ export default function App() {
     { label: "Midtown Rainmakers" },
   ];
 
+  const dropdownYearOptions = [
+    { label: "2025" },
+    { label: "2024" },
+    { label: "2023" },
+  ];
+
   function getKeyByValue(object, value) {
     return Object.keys(object).find(key => object[key] === value);
   }
 
-  const handleDropdownSelect = (selectedOption) => {
+  const handleDropdownTeam = (selectedOption) => {
     setNewTeam(selectedOption.label)
+  };
+
+  const handleDropdownYear = (selectedOption) => {
+    if (selectedOption.label == "2025"){
+      setLeagueId(leagueId2025)
+    } else if (selectedOption.label == "2024"){
+      setLeagueId(leagueId2024)
+    } else {
+      setLeagueId(leagueId2023)
+    }
   };
 
   function getKeyByValue(object, value) {
     return Object.keys(object).find(key => object[key] === value);
   }
-  
+
   const teams = {
     1: "Key West Pirates", 2: "Chamonix Alpines", 3: "Shanghai Warrior Monks", 4: "New Delhi Penguins",
     5: "Galway Potato Farmers", 6: "The London Merchants", 7: "Alamo City Renegades", 8: "Hiroshima Kamikazes",
@@ -84,12 +104,12 @@ export default function App() {
           }))
         );
         setWaivers(totalWaivers);
-        if (newTeam === "All Teams"){
+        if (newTeam === "All Teams") {
           setTrades(totalTrades);
         } else {
           const key = getKeyByValue(teams, newTeam); // get team ID (string or number)
           if (!key) return;
-        
+
           // Filter trades so only those involving the selected team remain
           const filteredTrades = totalTrades.map(tradeGroup =>
             tradeGroup.filter(trade => trade.consenter_ids?.includes(Number(key)))
@@ -104,7 +124,7 @@ export default function App() {
       }
     };
     fetchTransactions();
-  }, [newTeam]);
+  }, [newTeam, leagueId]);
 
   var list = []
 
@@ -115,7 +135,10 @@ export default function App() {
           The International Football League
         </h1>
 
-        <Dropdown options={dropdownOptions} onSelect={handleDropdownSelect} />
+        <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+          <Dropdown placeholder={"Select a team"} options={dropdownTeamOptions} onSelect={handleDropdownTeam} />
+          <Dropdown placeholder={"Select a year"} options={dropdownYearOptions} onSelect={handleDropdownYear} />
+        </div>
 
         {loading ? <p>Loading Transactions...</p> : (
           <div>
@@ -173,12 +196,12 @@ export default function App() {
                         return (
                           <React.Fragment key={tradeIdx}>
                             {rows.map((row, rowIdx) => (
-                              <tr 
-                              key={rowIdx}
-                              style={ rowIdx === rows.length - 1 
-                                ? { borderBottom: "5px solid #444" }  // darker line after each trade
-                                : {} 
-                              }
+                              <tr
+                                key={rowIdx}
+                                style={rowIdx === rows.length - 1
+                                  ? { borderBottom: "5px solid #444" }  // darker line after each trade
+                                  : {}
+                                }
                               >
                                 {rowIdx === 0 && (
                                   <td rowSpan={rows.length}>{formatDate(trade.created)}</td>
