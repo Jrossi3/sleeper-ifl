@@ -1,16 +1,44 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
+import Dropdown from "./components/dropdown";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [waivers, setWaivers] = useState([]);
   const [trades, setTrades] = useState([]);
   const [players, setPlayers] = useState([]);
+  const [newTeam, setNewTeam] = useState("")
   let Database = require('./data.json');
   const sport = "nfl";
   const leagueId = "1181024367924011008";
   const weeks = 18;
 
+  const dropdownOptions = [
+    { label: "All Teams"},
+    { label: "Key West Pirates"},
+    { label: "Chamonix Alpines" },
+    { label: "Shanghai Warrior Monks" },
+    { label: "New Delhi Penguins" },
+    { label: "Galway Potato Farmers" },
+    { label: "The London Merchants" },
+    { label: "Alamo City Renegades" },
+    { label: "Hiroshima Kamikazes" },
+    { label: "Glasgow Highlanders" },
+    { label: "Midtown Rainmakers" },
+  ];
+
+  function getKeyByValue(object, value) {
+    return Object.keys(object).find(key => object[key] === value);
+  }
+
+  const handleDropdownSelect = (selectedOption) => {
+    setNewTeam(selectedOption.label)
+  };
+
+  function getKeyByValue(object, value) {
+    return Object.keys(object).find(key => object[key] === value);
+  }
+  
   const teams = {
     1: "Key West Pirates", 2: "Chamonix Alpines", 3: "Shanghai Warrior Monks", 4: "New Delhi Penguins",
     5: "Galway Potato Farmers", 6: "The London Merchants", 7: "Alamo City Renegades", 8: "Hiroshima Kamikazes",
@@ -55,9 +83,20 @@ export default function App() {
             notes: dbMap[trade.transaction_id] ?? trade.notes
           }))
         );
-
         setWaivers(totalWaivers);
-        setTrades(totalTrades);
+        if (newTeam === "All Teams"){
+          setTrades(totalTrades);
+        } else {
+          const key = getKeyByValue(teams, newTeam); // get team ID (string or number)
+          if (!key) return;
+        
+          // Filter trades so only those involving the selected team remain
+          const filteredTrades = totalTrades.map(tradeGroup =>
+            tradeGroup.filter(trade => trade.consenter_ids?.includes(Number(key)))
+          );
+          setTrades(filteredTrades);
+        }
+
       } catch (err) {
         console.error(err);
       } finally {
@@ -65,7 +104,7 @@ export default function App() {
       }
     };
     fetchTransactions();
-  }, []);
+  }, [newTeam]);
 
   var list = []
 
@@ -75,6 +114,8 @@ export default function App() {
         <h1 className="text-2xl font-bold mb-4" style={{ textAlign: "center" }}>
           The International Football League
         </h1>
+
+        <Dropdown options={dropdownOptions} onSelect={handleDropdownSelect} />
 
         {loading ? <p>Loading Transactions...</p> : (
           <div>
@@ -143,8 +184,8 @@ export default function App() {
                                   <td rowSpan={rows.length}>{formatDate(trade.created)}</td>
                                 )}
                                 <td>{teams[row.teamId]}</td>
-                                <td>{row.player ? <div className="extra">{row.player}</div> : null}</td>
-                                <td>{row.pick ? <div className="extra">{row.pick}</div> : null}</td>
+                                <td>{row.player ? <div>{row.player}</div> : null}</td>
+                                <td>{row.pick ? <div>{row.pick}</div> : null}</td>
                                 {rowIdx === 0 && (
                                   <td rowSpan={rows.length}>
                                     <div style={{ width: "100%", minHeight: "50px" }}>
