@@ -4,17 +4,18 @@ import Dropdown from "./components/dropdown";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
-  const [waivers, setWaivers] = useState([]);
+  const [freeAgents, setFreeAgents] = useState([]);
   const [trades, setTrades] = useState([]);
   const [players, setPlayers] = useState([]);
-  const [newTeam, setNewTeam] = useState("All Teams")
-  const [leagueId, setLeagueId] = useState("1181024367924011008")
-  let Database = require('./data.json');
+  const [newTeam, setNewTeam] = useState("All Teams");
+  const [transaction, setTransactions] = useState("Trades");
+  const [leagueId, setLeagueId] = useState("1181024367924011008");
+  let Database = require("./data.json");
   const sport = "nfl";
+
   const leagueId2023 = "991037254564958208";
   const leagueId2024 = "1048193774259703808";
   const leagueId2025 = "1181024367924011008";
-
   const weeks = 18;
 
   const dropdownTeamOptions = [
@@ -37,37 +38,50 @@ export default function App() {
     { label: "2023" },
   ];
 
-  function getKeyByValue(object, value) {
-    return Object.keys(object).find(key => object[key] === value);
-  }
+  const dropdownTransactionOptions = [
+    { label: "Trades" },
+    { label: "Free Agent Drops" }
+  ];
+
+  const teams = {
+    1: "Key West Pirates",
+    2: "Chamonix Alpines",
+    3: "Shanghai Warrior Monks",
+    4: "New Delhi Penguins",
+    5: "Galway Potato Farmers",
+    6: "The London Merchants",
+    7: "Alamo City Renegades",
+    8: "Hiroshima Kamikazes",
+    9: "Glasgow Highlanders",
+    10: "Midtown Rainmakers",
+  };
+
+  const formatDate = (ms) =>
+    new Date(ms).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+  const getKeyByValue = (object, value) =>
+    Object.keys(object).find((key) => object[key] === value);
 
   const handleDropdownTeam = (selectedOption) => {
-    setNewTeam(selectedOption.label)
+    setNewTeam(selectedOption.label);
+  };
+  const handleDropdownTransactions = (selectedOption) => {
+    setTransactions(selectedOption.label);
   };
 
   const handleDropdownYear = (selectedOption) => {
-    if (selectedOption.label == "2025"){
-      setLeagueId(leagueId2025)
-    } else if (selectedOption.label == "2024"){
-      setLeagueId(leagueId2024)
+    if (selectedOption.label === "2025") {
+      setLeagueId(leagueId2025);
+    } else if (selectedOption.label === "2024") {
+      setLeagueId(leagueId2024);
     } else {
-      setLeagueId(leagueId2023)
+      setLeagueId(leagueId2023);
     }
   };
-
-  function getKeyByValue(object, value) {
-    return Object.keys(object).find(key => object[key] === value);
-  }
-
-  const teams = {
-    1: "Key West Pirates", 2: "Chamonix Alpines", 3: "Shanghai Warrior Monks", 4: "New Delhi Penguins",
-    5: "Galway Potato Farmers", 6: "The London Merchants", 7: "Alamo City Renegades", 8: "Hiroshima Kamikazes",
-    9: "Glasgow Highlanders", 10: "Midtown Rainmakers",
-  };
-
-  const formatDate = (ms) => new Date(ms).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "numeric"
-  });
 
   useEffect(() => {
     const fetchPlayers = async () => {
@@ -85,152 +99,237 @@ export default function App() {
   useEffect(() => {
     const fetchTransactions = async () => {
       setLoading(true);
-      let totalWaivers = [];
+      let totalFreeAgents = [];
       let totalTrades = [];
+
       try {
         for (let i = 1; i < weeks; i++) {
-          const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/transactions/${i}`);
+          const res = await fetch(
+            `https://api.sleeper.app/v1/league/${leagueId}/transactions/${i}`
+          );
           const json = await res.json();
           const completed = json.filter((t) => t.status === "complete");
-          totalWaivers.push(completed.filter((t) => t.type === "waiver"));
-          totalTrades.push(completed.filter((t) => t.type === "trade").reverse());
+          totalFreeAgents.push(
+            completed.filter((t) => t.type === "free_agent").reverse()
+          );
+          totalTrades.push(
+            completed.filter((t) => t.type === "trade").reverse()
+          );
         }
-        const dbMap = Object.fromEntries(Database.map(d => [d.transactionId, d.notes]));
 
-        totalTrades = totalTrades.map(tradeGroup =>
-          tradeGroup.map(trade => ({
+        const dbMap = Object.fromEntries(
+          Database.map((d) => [d.transactionId, d.notes])
+        );
+
+        totalTrades = totalTrades.map((tradeGroup) =>
+          tradeGroup.map((trade) => ({
             ...trade,
-            notes: dbMap[trade.transaction_id] ?? trade.notes
+            notes: dbMap[trade.transaction_id] ?? trade.notes,
           }))
         );
-        setWaivers(totalWaivers);
+
         if (newTeam === "All Teams") {
           setTrades(totalTrades);
+          setFreeAgents(totalFreeAgents);
         } else {
-          const key = getKeyByValue(teams, newTeam); // get team ID (string or number)
+          const key = getKeyByValue(teams, newTeam);
           if (!key) return;
 
-          // Filter trades so only those involving the selected team remain
-          const filteredTrades = totalTrades.map(tradeGroup =>
-            tradeGroup.filter(trade => trade.consenter_ids?.includes(Number(key)))
+          const filteredTrades = totalTrades.map((tradeGroup) =>
+            tradeGroup.filter((trade) =>
+              trade.consenter_ids?.includes(Number(key))
+            )
           );
-          setTrades(filteredTrades);
-        }
+          const filteredAgents = totalFreeAgents.map((agentGroup) =>
+            agentGroup.filter(
+              (drop) =>
+                drop.roster_ids?.includes(Number(key)) ||
+                drop.consenter_ids?.includes(Number(key))
+            )
+          );
 
+          setTrades(filteredTrades);
+          setFreeAgents(filteredAgents);
+        }
       } catch (err) {
         console.error(err);
       } finally {
         setLoading(false);
       }
     };
-    fetchTransactions();
-  }, [newTeam, leagueId]);
 
-  var list = []
+    fetchTransactions();
+  }, [newTeam, leagueId, transaction]);
 
   return (
     <div>
       <main className="p-4">
-        <h1 className="text-2xl font-bold mb-4" style={{ textAlign: "center" }}>
+        <h1
+          className="text-2xl font-bold mb-4"
+          style={{ textAlign: "center" }}
+        >
           The International Football League
         </h1>
 
-        <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
-          <Dropdown placeholder={"Select a team"} options={dropdownTeamOptions} onSelect={handleDropdownTeam} />
-          <Dropdown placeholder={"Select a year"} options={dropdownYearOptions} onSelect={handleDropdownYear} />
+        <div
+          style={{ display: "flex", gap: "10px", justifyContent: "center" }}
+        >
+          <Dropdown
+            placeholder={"Select a team"}
+            options={dropdownTeamOptions}
+            onSelect={handleDropdownTeam}
+          />
+          <Dropdown
+            placeholder={"Select a year"}
+            options={dropdownYearOptions}
+            onSelect={handleDropdownYear}
+          />
+          <Dropdown
+            placeholder={"Select a transaction"}
+            options={dropdownTransactionOptions}
+            onSelect={handleDropdownTransactions}
+          />
         </div>
 
-        {loading ? <p>Loading Transactions...</p> : (
+        {loading ? (
+          <p>Loading Transactions...</p>
+        ) : (
           <div>
-            {trades.map((week, weekIdx) =>
-              week.length === 0 ? null : (
-                <div key={weekIdx} className="my-4">
-                  <h3 style={{ textAlign: "center" }}>Week {weekIdx + 1}</h3>
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th><th>Team</th><th>Players</th><th>Draft Picks</th><th>Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {week.map((trade, tradeIdx) => {
-                        const teamIds = Object.values(trade.consenter_ids || {});
-                        const playerGroups = teamIds.map(() => []);
-                        const draftGroups = teamIds.map(() => []);
+            {transaction === "Trades" ? (
+              // ---------- SHOW TRADES ----------
+              trades.map((week, weekIdx) =>
+                week.length === 0 ? null : (
+                  <div key={weekIdx} className="my-4">
+                    <h3 style={{ textAlign: "center" }}>Week {weekIdx + 1} Trades</h3>
+                    <table className="custom-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Team</th>
+                          <th>Players</th>
+                          <th>Draft Picks</th>
+                          <th>Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {week.map((trade, tradeIdx) => {
+                          const teamIds = Object.values(trade.consenter_ids || {});
+                          const playerGroups = teamIds.map(() => []);
+                          const draftGroups = teamIds.map(() => []);
 
-                        if (trade.adds) {
-                          Object.entries(trade.adds).forEach(([pid, owner]) => {
-                            const idx = teamIds.indexOf(owner);
-                            if (idx >= 0) playerGroups[idx].push(pid);
-                          });
-                        }
+                          if (trade.adds) {
+                            Object.entries(trade.adds).forEach(([pid, owner]) => {
+                              const idx = teamIds.indexOf(owner);
+                              if (idx >= 0) playerGroups[idx].push(pid);
+                            });
+                          }
 
-                        if (trade.draft_picks) {
-                          trade.draft_picks.forEach((pick) => {
-                            const idx = teamIds.indexOf(pick.owner_id);
-                            if (idx >= 0) draftGroups[idx].push(pick);
-                          });
-                        }
+                          if (trade.draft_picks) {
+                            trade.draft_picks.forEach((pick) => {
+                              const idx = teamIds.indexOf(pick.owner_id);
+                              if (idx >= 0) draftGroups[idx].push(pick);
+                            });
+                          }
 
-                        // Build rows: one for each player, one for each draft pick
-                        const rows = [];
-                        teamIds.forEach((teamId, i) => {
-                          playerGroups[i].forEach((pid) => {
-                            rows.push({
-                              teamId,
-                              player: players[pid]?.full_name ?? pid,
-                              pick: null,
+                          const rows = [];
+                          teamIds.forEach((teamId, i) => {
+                            playerGroups[i].forEach((pid) => {
+                              rows.push({
+                                teamId,
+                                player: players[pid]?.full_name ?? pid,
+                                pick: null,
+                              });
+                            });
+                            draftGroups[i].forEach((pick) => {
+                              rows.push({
+                                teamId,
+                                player: null,
+                                pick: `${pick.season} Round ${pick.round} via ${teams[pick.roster_id]}`,
+                              });
                             });
                           });
-                          draftGroups[i].forEach((pick) => {
-                            rows.push({
-                              teamId,
-                              player: null,
-                              pick: `${pick.season} Round ${pick.round} via ${teams[pick.roster_id]}`,
-                            });
-                          });
-                        });
 
-                        list.push({ transactionId: trade.transaction_id, notes: "" });
-
-                        return (
-                          <React.Fragment key={tradeIdx}>
-                            {rows.map((row, rowIdx) => (
-                              <tr
-                                key={rowIdx}
-                                style={rowIdx === rows.length - 1
-                                  ? { borderBottom: "5px solid #444" }  // darker line after each trade
-                                  : {}
-                                }
-                              >
-                                {rowIdx === 0 && (
-                                  <td rowSpan={rows.length}>{formatDate(trade.created)}</td>
-                                )}
-                                <td>{teams[row.teamId]}</td>
-                                <td>{row.player ? <div>{row.player}</div> : null}</td>
-                                <td>{row.pick ? <div>{row.pick}</div> : null}</td>
-                                {rowIdx === 0 && (
-                                  <td rowSpan={rows.length}>
-                                    <div style={{ width: "100%", minHeight: "50px" }}>
+                          return (
+                            <React.Fragment key={tradeIdx}>
+                              {rows.map((row, rowIdx) => (
+                                <tr
+                                  key={rowIdx}
+                                  style={
+                                    rowIdx === rows.length - 1
+                                      ? { borderBottom: "5px solid #444" }
+                                      : {}
+                                  }
+                                >
+                                  {rowIdx === 0 && (
+                                    <td rowSpan={rows.length}>
+                                      {formatDate(trade.created)}
+                                    </td>
+                                  )}
+                                  <td>{teams[row.teamId]}</td>
+                                  <td>{row.player}</td>
+                                  <td>{row.pick}</td>
+                                  {rowIdx === 0 && (
+                                    <td rowSpan={rows.length}>
                                       {trade.notes || "No Notes"}
-                                    </div>
-                                  </td>
-                                )}
-                              </tr>
-                            ))}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              )
+            ) : (
+              // ---------- SHOW FREE AGENT DROPS ----------
+              freeAgents.map((week, weekIdx) =>
+                week.length === 0 ? null : (
+                  <div key={weekIdx} className="my-4">
+                    <h3 style={{ textAlign: "center" }}>
+                      Week {weekIdx + 1} Free Agent Drops
+                    </h3>
+                    <table className="custom-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Team</th>
+                          <th>Dropped</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {week.map((fa, idx) => {
+                          const drops = fa.drops
+                            ? Object.keys(fa.drops).map(
+                              (pid) => players[pid]?.full_name ?? pid
+                            )
+                            : [];
+                          const teamId = fa.roster_ids?.[0];
 
-                  </table>
-                </div>
+                          return drops.map((dropName, i) => (
+                            <tr
+                              key={`${idx}-${i}`}
+                            >
+                              {i === 0 && (
+                                <td rowSpan={drops.length}>{formatDate(fa.created)}</td>
+                              )}
+                              <td>{teams[teamId]}</td>
+                              <td>{dropName}</td>
+                            </tr>
+                          ));
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
               )
             )}
+
           </div>
         )}
       </main>
-      {console.log(list)}
     </div>
   );
 }
