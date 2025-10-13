@@ -1,19 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './dropdown.css';
 
-function Dropdown({ options, onSelect, placeholder }) {
+function Dropdown({ options, onSelect, placeholder, selectedOption, resetTrigger }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedOption, setSelectedOption] = useState(null);
-  const dropdownRef = useRef(null); // to detect outside clicks
+  const [internalSelected, setInternalSelected] = useState(selectedOption || null);
+  const dropdownRef = useRef(null);
 
   const toggleDropdown = () => setIsOpen((prev) => !prev);
 
   const handleOptionClick = (option, e) => {
     e.stopPropagation();
-    setSelectedOption(option);
+    setInternalSelected(option);
     onSelect(option);
     setIsOpen(false);
   };
+
+  // 🔁 Reset selection whenever resetTrigger changes
+  useEffect(() => {
+    setInternalSelected(null);
+  }, [resetTrigger]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -29,20 +34,17 @@ function Dropdown({ options, onSelect, placeholder }) {
   return (
     <div className="dropdown" ref={dropdownRef}>
       <div className="dropdown-header" onClick={toggleDropdown}>
-        <span>{selectedOption ? selectedOption.label : placeholder}</span>
+        <span>{internalSelected ? internalSelected.label : placeholder}</span>
         <span className={`arrow ${isOpen ? 'up' : 'down'}`}></span>
       </div>
 
       {isOpen && (
-        <div
-          className="dropdown-menu"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="dropdown-menu" onClick={(e) => e.stopPropagation()}>
           {options.map((option) => (
             <div
-              key={option.value}
+              key={option.id || option.label}
               className={`dropdown-item ${
-                selectedOption?.value === option.value ? 'selected' : ''
+                internalSelected?.id === option.id ? 'selected' : ''
               }`}
               onClick={(e) => handleOptionClick(option, e)}
             >

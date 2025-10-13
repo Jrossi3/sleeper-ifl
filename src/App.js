@@ -10,7 +10,7 @@ export default function App() {
   const [players, setPlayers] = useState([]);
   const [newTeam, setNewTeam] = useState("All Teams");
   const [transaction, setTransactions] = useState("Trades");
-  const [leagueId, setLeagueId] = useState("1181024367924011008");
+  const [leagueId, setLeagueId] = useState("");
   const [submittedText, setSubmittedText] = useState("");
   const [dropdownLeagueOptions, setLeagueDropdown] = useState([])
   const [leagueName, setLeagueName] = useState("")
@@ -74,38 +74,48 @@ export default function App() {
       return;
     }
 
+    // 🔄 Reset state before fetching new data
+    setLeagueId("");
+    setLeagueName("");
+    setLeagueDropdown([]);
+    setUserLeagues([]);
+    setDropdownTeams([]);
+    setTeams({});
+    setNewTeam("All Teams");
+    setTrades([])
+    setTransactions("Trades")
+  
     try {
       // Fetch the user info by username
       const res = await fetch(`https://api.sleeper.app/v1/user/${value}`);
       if (!res.ok) throw new Error("User not found");
-
+  
       const json = await res.json();
-
+  
       // If the response is empty or missing a user_id, show alert
       if (!json || !json.user_id) {
         alert(`No user found matching "${value}".`);
         return;
       }
-
+  
       // Fetch leagues for that user
       const userId = json.user_id;
       const res1 = await fetch(`https://api.sleeper.app/v1/user/${userId}/leagues/nfl/2025`);
       const leagues = await res1.json();
-
-      // If no leagues found, you can optionally alert again
+  
+      // If no leagues found
       if (!leagues || leagues.length === 0) {
         alert(`User "${value}" has no leagues.`);
       } else {
+        const temp = leagues.map((l) => ({
+          label: l.name,
+          id: l.league_id,
+        }));
+  
         setUserLeagues(leagues);
-        var temp = []
-        for (let i = 0; i < leagues.length; i++) {
-          temp.push({ label: leagues[i].name, id: leagues[i].league_id })
-        }
-        console.log(temp)
-        setLeagueDropdown(temp)
+        setLeagueDropdown(temp);
         setSubmittedText(value);
       }
-
     } catch (err) {
       console.error("Fetch failed:", err);
       alert(`Nothing matches with the username "${value}".`);
@@ -245,6 +255,7 @@ export default function App() {
                 placeholder={"Select a League"}
                 options={dropdownLeagueOptions}
                 onSelect={handleDropdownLeague}
+                resetTrigger={submittedText} // 👈 this resets when username changes
               />
               {leagueName == "The International Football League" ? <Dropdown
                 placeholder={"Select a year"}
@@ -261,11 +272,13 @@ export default function App() {
             placeholder={"Select a team"}
             options={dropdownTeamOptions}
             onSelect={handleDropdownTeam}
+            resetTrigger={leagueId} // 👈 resets when league changes
           />
           <Dropdown
             placeholder={"Select a transaction"}
             options={dropdownTransactionOptions}
             onSelect={handleDropdownTransactions}
+            resetTrigger={leagueId}
           />
         </div>
 
@@ -286,7 +299,7 @@ export default function App() {
                           <th>Team</th>
                           <th>Players</th>
                           <th>Draft Picks</th>
-                          <th>Notes</th>
+                          {leagueName == "The International Football League" ? <th>Notes</th> : null}
                         </tr>
                       </thead>
                       <tbody>
@@ -346,7 +359,7 @@ export default function App() {
                                   <td>{teams[row.teamId]}</td>
                                   <td>{row.player}</td>
                                   <td>{row.pick}</td>
-                                  {rowIdx === 0 && (
+                                  {rowIdx === 0 && leagueName == "The International Football League" && (
                                     <td rowSpan={rows.length}>
                                       {trade.notes || "No Notes"}
                                     </td>
