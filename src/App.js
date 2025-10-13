@@ -16,6 +16,7 @@ export default function App() {
   const [leagueName, setLeagueName] = useState("")
   const [userLeagues, setUserLeagues] = useState([]);
   const [users, setUsers] = useState([])
+  const [teamsKey, setKey] = useState([])
   const [teams, setTeams] = useState({})
   const [dropdownTeamOptions, setDropdownTeams] = useState([])
   let Database = require("./data.json");
@@ -84,25 +85,25 @@ export default function App() {
     setNewTeam("All Teams");
     setTrades([])
     setTransactions("Trades")
-  
+
     try {
       // Fetch the user info by username
       const res = await fetch(`https://api.sleeper.app/v1/user/${value}`);
       if (!res.ok) throw new Error("User not found");
-  
+
       const json = await res.json();
-  
+
       // If the response is empty or missing a user_id, show alert
       if (!json || !json.user_id) {
         alert(`No user found matching "${value}".`);
         return;
       }
-  
+
       // Fetch leagues for that user
       const userId = json.user_id;
       const res1 = await fetch(`https://api.sleeper.app/v1/user/${userId}/leagues/nfl/2025`);
       const leagues = await res1.json();
-  
+
       // If no leagues found
       if (!leagues || leagues.length === 0) {
         alert(`User "${value}" has no leagues.`);
@@ -111,7 +112,7 @@ export default function App() {
           label: l.name,
           id: l.league_id,
         }));
-  
+
         setUserLeagues(leagues);
         setLeagueDropdown(temp);
         setSubmittedText(value);
@@ -179,6 +180,7 @@ export default function App() {
         console.log(roster, 'rosters here')
 
         var teams = {}
+        var key = []
         var dropdownTeams = [{ label: "All Teams" }]
         for (let i = 0; i < user.length; i++) {
           for (let x = 0; x < roster.length; x++) {
@@ -187,9 +189,13 @@ export default function App() {
               dropdownTeams.push({ label: user[i].team ? user[i].team : "Team " + user[i].username })
             }
           }
+          key.push({ team: user[i].team ? user[i].team : "Team " + user[i].username, username: user[i].username })
         }
+
         console.log(teams, 'teams here')
         setTeams(teams)
+        setKey(key)
+        console.log(key, 'key here')
         setDropdownTeams(dropdownTeams)
         const dbMap = Object.fromEntries(
           Database.map((d) => [d.transactionId, d.notes])
@@ -417,7 +423,24 @@ export default function App() {
                 )
               )
             )}
-
+            <table className="custom-table" style={{ width: "30%", marginLeft: "auto", marginRight: "auto" }}>
+              <thead>
+                <tr>
+                  {teamsKey.length > 0 ? <th>Team</th> : null}
+                  {teamsKey.length > 0 ? <th>Username</th> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {teamsKey.map((team, i) => (
+                  <tr>
+                    <td>{team.team}</td>
+                    <td>{team.username}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <br />
+            <br />
           </div>
         )}
       </main>
