@@ -12,7 +12,12 @@ export default function App() {
   const [transaction, setTransactions] = useState("Trades");
   const [leagueId, setLeagueId] = useState("1181024367924011008");
   const [submittedText, setSubmittedText] = useState("");
+  const [dropdownLeagueOptions, setLeagueDropdown] = useState([])
+  const [leagueName, setLeagueName] = useState("")
   const [userLeagues, setUserLeagues] = useState([]);
+  const [users, setUsers] = useState([])
+  const [teams, setTeams] = useState({})
+  const [dropdownTeamOptions, setDropdownTeams] = useState([])
   let Database = require("./data.json");
   const sport = "nfl";
 
@@ -20,20 +25,6 @@ export default function App() {
   const leagueId2024 = "1048193774259703808";
   const leagueId2025 = "1181024367924011008";
   const weeks = 18;
-
-  const dropdownTeamOptions = [
-    { label: "All Teams" },
-    { label: "Key West Pirates" },
-    { label: "Chamonix Alpines" },
-    { label: "Shanghai Warrior Monks" },
-    { label: "New Delhi Penguins" },
-    { label: "Galway Potato Farmers" },
-    { label: "The London Merchants" },
-    { label: "Alamo City Renegades" },
-    { label: "Hiroshima Kamikazes" },
-    { label: "Glasgow Highlanders" },
-    { label: "Midtown Rainmakers" },
-  ];
 
   const dropdownYearOptions = [
     { label: "2025" },
@@ -45,19 +36,6 @@ export default function App() {
     { label: "Trades" },
     { label: "Free Agent Drops" }
   ];
-
-  const teams = {
-    1: "Key West Pirates",
-    2: "Chamonix Alpines",
-    3: "Shanghai Warrior Monks",
-    4: "New Delhi Penguins",
-    5: "Galway Potato Farmers",
-    6: "The London Merchants",
-    7: "Alamo City Renegades",
-    8: "Hiroshima Kamikazes",
-    9: "Glasgow Highlanders",
-    10: "Midtown Rainmakers",
-  };
 
   const formatDate = (ms) =>
     new Date(ms).toLocaleDateString("en-US", {
@@ -76,6 +54,11 @@ export default function App() {
     setTransactions(selectedOption.label);
   };
 
+  const handleDropdownLeague = (selectedOption) => {
+    setLeagueId(selectedOption.id)
+    setLeagueName(selectedOption.label)
+  };
+
   const handleDropdownYear = (selectedOption) => {
     if (selectedOption.label === "2025") {
       setLeagueId(leagueId2025);
@@ -85,10 +68,50 @@ export default function App() {
       setLeagueId(leagueId2023);
     }
   };
-  const handleInputSubmit = (value) => {
-    console.log("Received from child:", value);
-    setSubmittedText(value);
+  const handleInputSubmit = async (value) => {
+    if (!value) {
+      alert("Please enter a username.");
+      return;
+    }
+
+    try {
+      // Fetch the user info by username
+      const res = await fetch(`https://api.sleeper.app/v1/user/${value}`);
+      if (!res.ok) throw new Error("User not found");
+
+      const json = await res.json();
+
+      // If the response is empty or missing a user_id, show alert
+      if (!json || !json.user_id) {
+        alert(`No user found matching "${value}".`);
+        return;
+      }
+
+      // Fetch leagues for that user
+      const userId = json.user_id;
+      const res1 = await fetch(`https://api.sleeper.app/v1/user/${userId}/leagues/nfl/2025`);
+      const leagues = await res1.json();
+
+      // If no leagues found, you can optionally alert again
+      if (!leagues || leagues.length === 0) {
+        alert(`User "${value}" has no leagues.`);
+      } else {
+        setUserLeagues(leagues);
+        var temp = []
+        for (let i = 0; i < leagues.length; i++) {
+          temp.push({ label: leagues[i].name, id: leagues[i].league_id })
+        }
+        console.log(temp)
+        setLeagueDropdown(temp)
+        setSubmittedText(value);
+      }
+
+    } catch (err) {
+      console.error("Fetch failed:", err);
+      alert(`Nothing matches with the username "${value}".`);
+    }
   };
+
 
   useEffect(() => {
     const fetchPlayers = async () => {
@@ -103,30 +126,6 @@ export default function App() {
     fetchPlayers();
   }, []);
 
-  useEffect(() => {
-    if (!submittedText) return; // ✅ skip if empty
-  
-    const fetchPlayers = async () => {
-      try {
-        const res = await fetch(`https://api.sleeper.app/v1/user/${submittedText}`);
-        if (!res.ok) throw new Error("User not found");
-        const json = await res.json();
-
-        const userId = json.user_id;
-        if (!userId) throw new Error("No user_id found for this username");
-  
-        const userLeagues = await fetch(`https://api.sleeper.app/v1/user/${userId}/leagues/nfl/2025`);
-        const leagues = await userLeagues.json();
-        console.log("Leagues:", leagues);
-        setUserLeagues(leagues)
-      } catch (err) {
-        console.error("Fetch failed:", err);
-      }
-    };
-  
-    fetchPlayers();
-  }, [submittedText]);
-  
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -149,6 +148,39 @@ export default function App() {
           );
         }
 
+        const users = await fetch(
+          `https://api.sleeper.app/v1/league/${leagueId}/users`
+        );
+        const jsonUsers = await users.json();
+        var user = []
+        for (let i = 0; i < jsonUsers.length; i++) {
+          user.push({ team: jsonUsers[i].metadata.team_name, owner_id: jsonUsers[i].user_id, username: jsonUsers[i].display_name })
+        }
+        console.log(user, 'users here', jsonUsers)
+
+        const res = await fetch(
+          `https://api.sleeper.app/v1/league/${leagueId}/rosters`
+        );
+        const json = await res.json();
+        var roster = []
+        for (let i = 0; i < json.length; i++) {
+          roster.push({ roster_id: json[i].roster_id, owner_id: json[i].owner_id })
+        }
+        console.log(roster, 'rosters here')
+
+        var teams = {}
+        var dropdownTeams = [{ label: "All Teams" }]
+        for (let i = 0; i < user.length; i++) {
+          for (let x = 0; x < roster.length; x++) {
+            if (user[i].owner_id == roster[x].owner_id) {
+              teams[roster[x].roster_id] = user[i].team ? user[i].team : "Team " + user[i].username
+              dropdownTeams.push({ label: user[i].team ? user[i].team : "Team " + user[i].username })
+            }
+          }
+        }
+        console.log(teams, 'teams here')
+        setTeams(teams)
+        setDropdownTeams(dropdownTeams)
         const dbMap = Object.fromEntries(
           Database.map((d) => [d.transactionId, d.notes])
         );
@@ -204,7 +236,23 @@ export default function App() {
         </h1>
         <div style={{ textAlign: "center", marginTop: "2rem" }}>
           <TextInput onSubmitValue={handleInputSubmit} />
-          {submittedText.length > 0?<p>Welcome {submittedText}</p>: null}
+          {submittedText.length > 0 ?
+            <div
+              style={{ display: "flex", gap: "10px", justifyContent: "center" }}
+            >
+              <p>Welcome {submittedText}</p>
+              <Dropdown
+                placeholder={"Select a League"}
+                options={dropdownLeagueOptions}
+                onSelect={handleDropdownLeague}
+              />
+              {leagueName == "The International Football League" ? <Dropdown
+                placeholder={"Select a year"}
+                options={dropdownYearOptions}
+                onSelect={handleDropdownYear}
+              /> : null}
+            </div>
+            : null}
         </div>
         <div
           style={{ display: "flex", gap: "10px", justifyContent: "center" }}
@@ -213,11 +261,6 @@ export default function App() {
             placeholder={"Select a team"}
             options={dropdownTeamOptions}
             onSelect={handleDropdownTeam}
-          />
-          <Dropdown
-            placeholder={"Select a year"}
-            options={dropdownYearOptions}
-            onSelect={handleDropdownYear}
           />
           <Dropdown
             placeholder={"Select a transaction"}
