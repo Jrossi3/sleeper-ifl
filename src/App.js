@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 import Dropdown from "./components/dropdown";
+import TextInput from "./components/TextInput"
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -10,6 +11,8 @@ export default function App() {
   const [newTeam, setNewTeam] = useState("All Teams");
   const [transaction, setTransactions] = useState("Trades");
   const [leagueId, setLeagueId] = useState("1181024367924011008");
+  const [submittedText, setSubmittedText] = useState("");
+  const [userLeagues, setUserLeagues] = useState([]);
   let Database = require("./data.json");
   const sport = "nfl";
 
@@ -82,6 +85,10 @@ export default function App() {
       setLeagueId(leagueId2023);
     }
   };
+  const handleInputSubmit = (value) => {
+    console.log("Received from child:", value);
+    setSubmittedText(value);
+  };
 
   useEffect(() => {
     const fetchPlayers = async () => {
@@ -95,6 +102,31 @@ export default function App() {
     };
     fetchPlayers();
   }, []);
+
+  useEffect(() => {
+    if (!submittedText) return; // ✅ skip if empty
+  
+    const fetchPlayers = async () => {
+      try {
+        const res = await fetch(`https://api.sleeper.app/v1/user/${submittedText}`);
+        if (!res.ok) throw new Error("User not found");
+        const json = await res.json();
+
+        const userId = json.user_id;
+        if (!userId) throw new Error("No user_id found for this username");
+  
+        const userLeagues = await fetch(`https://api.sleeper.app/v1/user/${userId}/leagues/nfl/2025`);
+        const leagues = await userLeagues.json();
+        console.log("Leagues:", leagues);
+        setUserLeagues(leagues)
+      } catch (err) {
+        console.error("Fetch failed:", err);
+      }
+    };
+  
+    fetchPlayers();
+  }, [submittedText]);
+  
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -170,7 +202,10 @@ export default function App() {
         >
           The International Football League
         </h1>
-
+        <div style={{ textAlign: "center", marginTop: "2rem" }}>
+          <TextInput onSubmitValue={handleInputSubmit} />
+          {submittedText.length > 0?<p>Welcome {submittedText}</p>: null}
+        </div>
         <div
           style={{ display: "flex", gap: "10px", justifyContent: "center" }}
         >
