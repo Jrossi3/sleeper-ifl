@@ -75,17 +75,6 @@ export default function App() {
       return;
     }
 
-    // 🔄 Reset state before fetching new data
-    setLeagueId("");
-    setLeagueName("");
-    setLeagueDropdown([]);
-    setUserLeagues([]);
-    setDropdownTeams([]);
-    setTeams({});
-    setNewTeam("All Teams");
-    setTrades([])
-    setTransactions("Trades")
-
     try {
       // Fetch the user info by username
       const res = await fetch(`https://api.sleeper.app/v1/user/${value}`);
@@ -98,6 +87,18 @@ export default function App() {
         alert(`No user found matching "${value}".`);
         return;
       }
+
+      // 🔄 Reset state before fetching new data
+      setLeagueId("");
+      setLeagueName("");
+      setLeagueDropdown([]);
+      setUserLeagues([]);
+      setDropdownTeams([]);
+      setTeams({});
+      setNewTeam("All Teams");
+      setTrades([])
+      setTransactions("Trades")
+      setKey([])
 
       // Fetch leagues for that user
       const userId = json.user_id;
