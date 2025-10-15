@@ -289,7 +289,7 @@ export default function App() {
             resetTrigger={leagueId} // 👈 resets when league changes
           />
           <Dropdown
-            placeholder={"Select a transaction"}
+            placeholder={"Select a view"}
             options={dropdownTransactionOptions}
             onSelect={handleDropdownTransactions}
             resetTrigger={leagueId}
@@ -297,7 +297,7 @@ export default function App() {
         </div>
 
         {loading ? (
-          <p>Loading Transactions...</p>
+          <p style={{textAlign: "center"}}>Loading...</p>
         ) : (
           <div>
             {transaction === "Trades" ? (
