@@ -14,11 +14,11 @@ export default function App() {
   const [submittedText, setSubmittedText] = useState("");
   const [dropdownLeagueOptions, setLeagueDropdown] = useState([])
   const [leagueName, setLeagueName] = useState("")
-  const [userLeagues, setUserLeagues] = useState([]);
-  const [users, setUsers] = useState([])
   const [teamsKey, setKey] = useState([])
   const [teams, setTeams] = useState({})
   const [dropdownTeamOptions, setDropdownTeams] = useState([])
+  const [leagueType, setLeagueType] = useState("")
+  const [rosters, setRosters] = useState([])
   let Database = require("./data.json");
   const sport = "nfl";
 
@@ -35,7 +35,8 @@ export default function App() {
 
   const dropdownTransactionOptions = [
     { label: "Trades" },
-    { label: "Free Agent Drops" }
+    { label: "Free Agent Drops" },
+    { label: "Rosters"}
   ];
 
   const formatDate = (ms) =>
@@ -58,6 +59,7 @@ export default function App() {
   const handleDropdownLeague = (selectedOption) => {
     setLeagueId(selectedOption.id)
     setLeagueName(selectedOption.label)
+    setLeagueType(selectedOption.dynasty)
   };
 
   const handleDropdownYear = (selectedOption) => {
@@ -92,7 +94,6 @@ export default function App() {
       setLeagueId("");
       setLeagueName("");
       setLeagueDropdown([]);
-      setUserLeagues([]);
       setDropdownTeams([]);
       setTeams({});
       setNewTeam("All Teams");
@@ -112,9 +113,9 @@ export default function App() {
         const temp = leagues.map((l) => ({
           label: l.name,
           id: l.league_id,
+          dynasty: l.settings.taxi_slots > 0 ? "Dynasty" : "Redraft"
         }));
 
-        setUserLeagues(leagues);
         setLeagueDropdown(temp);
         setSubmittedText(value);
       }
@@ -176,9 +177,9 @@ export default function App() {
         const json = await res.json();
         var roster = []
         for (let i = 0; i < json.length; i++) {
-          roster.push({ roster_id: json[i].roster_id, owner_id: json[i].owner_id })
+          roster.push({ roster_id: json[i].roster_id, owner_id: json[i].owner_id, players: json[i].players, reserve: json[i].reserve, taxi: json[i].taxi, wins: json[i].settings.wins, losses: json[i].settings.losses})
         }
-        console.log(roster, 'rosters here')
+        console.log(roster, 'rosters here', json)
 
         var teams = {}
         var key = []
@@ -188,10 +189,13 @@ export default function App() {
             if (user[i].owner_id == roster[x].owner_id) {
               teams[roster[x].roster_id] = user[i].team ? user[i].team : "Team " + user[i].username
               dropdownTeams.push({ label: user[i].team ? user[i].team : "Team " + user[i].username })
+              roster[x]["team_name"] = user[i].team ? user[i].team : "Team " + user[i].username
             }
           }
           key.push({ team: user[i].team ? user[i].team : "Team " + user[i].username, username: user[i].username })
         }
+        console.log('updated rosters', roster)
+        setRosters(roster)
 
         console.log(teams, 'teams here')
         setTeams(teams)
@@ -212,6 +216,7 @@ export default function App() {
         if (newTeam === "All Teams") {
           setTrades(totalTrades);
           setFreeAgents(totalFreeAgents);
+          setRosters(roster)
         } else {
           const key = getKeyByValue(teams, newTeam);
           if (!key) return;
@@ -228,9 +233,11 @@ export default function App() {
                 drop.consenter_ids?.includes(Number(key))
             )
           );
+          roster = [roster[key-1]]
 
           setTrades(filteredTrades);
           setFreeAgents(filteredAgents);
+          setRosters(roster)
         }
       } catch (err) {
         console.error(err);
@@ -305,7 +312,7 @@ export default function App() {
                           <th>Date</th>
                           <th>Team</th>
                           <th>Players</th>
-                          <th>Draft Picks</th>
+                          {leagueType == "Dynasty" ? <th>Draft Picks</th> : null}
                           {leagueName == "The International Football League" ? <th>Notes</th> : null}
                         </tr>
                       </thead>
@@ -365,7 +372,7 @@ export default function App() {
                                   )}
                                   <td>{teams[row.teamId]}</td>
                                   <td>{row.player}</td>
-                                  <td>{row.pick}</td>
+                                  {leagueType == "Dynasty" ? <td>{row.pick}</td> : null}
                                   {rowIdx === 0 && leagueName == "The International Football League" && (
                                     <td rowSpan={rows.length}>
                                       {trade.notes || "No Notes"}
@@ -381,7 +388,7 @@ export default function App() {
                   </div>
                 )
               )
-            ) : (
+            ) : transaction === "Free Agent Drops" ? (
               // ---------- SHOW FREE AGENT DROPS ----------
               freeAgents.map((week, weekIdx) =>
                 week.length === 0 ? null : (
@@ -423,7 +430,53 @@ export default function App() {
                   </div>
                 )
               )
+            ) : (// ---------- SHOW ROSTERS ----------
+
+              rosters.map((roster, rosterIdx) => {
+                const playerList = roster.players || [];
+                const irList = roster.reserve || [];
+                const taxiList = roster.taxi || [];
+            
+                // find the longest list length to balance table rows
+                const maxLen = Math.max(
+                  playerList.length,
+                  irList.length,
+                  taxiList.length
+                );
+            
+                return (
+                  <div key={rosterIdx} className="my-4">
+                    <h3 style={{ textAlign: "center" }}>
+                      {roster.team_name} - Record: {roster.wins}-{roster.losses}
+                    </h3>
+                    <table
+                      className="custom-table"
+                    >
+                      <thead>
+                        <tr>
+                          <th>Players</th>
+                          <th>IR</th>
+                          {leagueType === "Dynasty" ? <th>Taxi</th> : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...Array(maxLen)].map((_, i) => (
+                          <tr key={i}>
+                            <td>{players[playerList[i]]?.full_name ?? ""}</td>
+                            <td>{players[irList[i]]?.full_name ?? ""}</td>
+                            {leagueType === "Dynasty" ? (
+                              <td>{players[taxiList[i]]?.full_name ?? ""}</td>
+                            ) : null}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })
             )}
+            <br />
+            <br />
             <table className="custom-table" style={{ width: "30%", marginLeft: "auto", marginRight: "auto" }}>
               <thead>
                 <tr>

@@ -90,6 +90,13 @@
   border-bottom: 3px solid #444;
 }
 
+.custom-table {
+  width: 80%;
+  border-collapse: collapse;
+  margin: 0 auto;
+}
+
+
 /* Mobile-specific adjustments */
 @media (max-width: 600px) {
   .custom-table {
