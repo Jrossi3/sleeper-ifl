@@ -33,7 +33,7 @@ export default function App() {
   const dropdownTransactionOptions = [
     { label: "Trades" },
     { label: "Free Agent Transactions" },
-    { label: "Rosters" }
+    { label: "Rosters and Records" }
   ];
 
   const formatDate = (ms) =>
