@@ -314,6 +314,28 @@ export default function App() {
     fetchTransactions();
   }, [newTeam, leagueId, transaction]);
 
+  function useMediaQuery(query) {
+    const mediaQuery = window.matchMedia(query);
+    const [matches, setMatches] = useState(mediaQuery.matches);
+  
+    useEffect(() => {
+      const handler = (e) => setMatches(e.matches);
+      mediaQuery.addListener(handler);
+      return () => mediaQuery.removeListener(handler);
+    }, [mediaQuery]);
+  
+    return matches;
+  }
+
+  const isMobile = useMediaQuery('(max-width: 600px)');
+
+  const divStyle = {
+    display: isMobile ? "": "flex",
+    gap: "10px",
+    justifyContent: "center",
+    margin: isMobile ? "1rem" : ""
+  };
+
   return (
     <div>
       <main className="p-4">
@@ -356,16 +378,19 @@ export default function App() {
           >
             Logout & Clear Data
           </button>
+          </div>
 
           {user.length > 0 ?
+          
             <div
-              style={{ display: "flex", gap: "10px", justifyContent: "center" }}
+              style={divStyle}
             >
               <p>Welcome {user}</p>
               <Dropdown
                 placeholder={"Select a League"}
                 options={dropdownLeagueOptions}
                 onSelect={handleDropdownLeague}
+                style={divStyle}
                 resetTrigger={user} // 👈 this resets when username changes
               />
               {availableYears.length > 1 && (
@@ -391,9 +416,7 @@ export default function App() {
                 resetTrigger={user}
               />
             </div>
-
             : null}
-        </div>
 
         {loading ? (
           <p style={{ textAlign: "center" }}>Loading...</p>
