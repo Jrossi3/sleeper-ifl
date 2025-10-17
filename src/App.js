@@ -96,6 +96,8 @@ export default function App() {
       setKey([])
       setUser(value)
       setUserId(userId)
+      setAvailableYears(["2025"])
+      setYear("2025")
 
     } catch (err) {
       console.error("Fetch failed:", err);
