@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './dropdown.css';
 
-function Dropdown({ options, onSelect, placeholder, selectedOption, resetTrigger }) {
+function Dropdown({ options, onSelect, placeholder, value, resetTrigger }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [internalSelected, setInternalSelected] = useState(selectedOption || null);
+  const [internalSelected, setInternalSelected] = useState(value ? value : placeholder);
   const dropdownRef = useRef(null);
 
   const toggleDropdown = () => setIsOpen((prev) => !prev);
