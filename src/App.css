@@ -37,6 +37,29 @@
   }
 }
 
+.positions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 3 columns */
+  grid-auto-rows: minmax(40px, auto);
+  gap: 10px;
+  max-height: calc(4 * 40px + 30px); /* limits to ~4 rows visually */
+  overflow-y: auto; /* allows scroll if more than 12 items */
+  width: 60%;
+  margin: 0 auto;
+  justify-items: center;
+}
+
+.positions-grid p {
+  background-color: #f0f4ff;
+  border-radius: 8px;
+  padding: 6px 10px;
+  width: 100%;
+  max-width: 150px;
+  text-align: center;
+  font-weight: 500;
+}
+
+
 .grid-container {
   display: grid;
   grid-template-columns: repeat(3, 1fr); /* Creates 3 equal-width columns */

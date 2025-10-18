@@ -1,0 +1,38 @@
+/* Mobile-specific adjustments */
+@media (max-width: 600px) {
+    .grid-container {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        /* 3 columns, each taking equal space */
+        gap: 10px;
+        /* Space between grid items */
+        margin: 1rem;
+    }
+
+    .grid-item {
+        /* You can add styling for your individual grid items here */
+        border: 1px solid lightgray;
+        padding: 10px;
+        text-align: center;
+        /* To ensure max 4 rows per column, you'll need to manage the 'items' array length */
+        /* and potentially add specific styles for items that would exceed this limit if needed, */
+        /* but CSS Grid itself will naturally flow items into the next row/column. */
+    }
+}
+
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* 3 columns, each taking equal space */
+    gap: 10px; /* Space between grid items */
+    margin: 1rem;
+  }
+  
+  .grid-item {
+    /* You can add styling for your individual grid items here */
+    border: 1px solid lightgray;
+    padding: 10px;
+    text-align: center;
+    /* To ensure max 4 rows per column, you'll need to manage the 'items' array length */
+    /* and potentially add specific styles for items that would exceed this limit if needed, */
+    /* but CSS Grid itself will naturally flow items into the next row/column. */
+  }

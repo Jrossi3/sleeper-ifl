@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import "./App.css";
 import Dropdown from "./components/dropdown";
 import TextInput from "./components/TextInput"
+import GridDisplay from './components/GridDisplays';
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -23,6 +24,7 @@ export default function App() {
   const [idUser, setUserId] = useState("");
   const [availableYears, setAvailableYears] = useState(["2025"]);
   const [tradeCount, setTradeCount] = useState(1)
+  const [positions, setLeaguePositions] = useState([])
 
   let Database = require("./data.json");
   const sport = "nfl";
@@ -57,6 +59,7 @@ export default function App() {
     setLeagueId(selectedOption.id)
     setLeagueName(selectedOption.label)
     setLeagueType(selectedOption.dynasty)
+    setLeaguePositions(selectedOption.roster)
     fetchAvailableYears(selectedOption.label);
   };
 
@@ -142,11 +145,16 @@ export default function App() {
         if (!leagues || leagues.length === 0) {
           alert(`User "${user}" has no leagues.`);
         } else {
+          console.log(leagues, 'leagues are here')
           const temp = leagues.map((l) => ({
             label: l.name,
             id: l.league_id,
-            dynasty: l.settings.taxi_slots > 0 ? "Dynasty" : "Redraft"
+            dynasty: l.settings.taxi_slots > 0 ? "Dynasty" : "Redraft",
+            roster: l.roster_positions.filter(function(position) {
+              return position != 'BN'
+          })
           }));
+          console.log(temp, 'temp is here')
 
           var check = false
           temp.map((league) => {
@@ -422,6 +430,14 @@ export default function App() {
           <p style={{ textAlign: "center" }}>Loading...</p>
         ) : (
           <div>
+            {user && leagueId ? (
+              <div style={{ textAlign: "center" }}>
+                <h3>Starting Positions</h3>
+                <GridDisplay items={positions} />
+              </div>
+            ) : null}
+
+          <div>
             {transaction === "Trades" ? (
               // ---------- SHOW TRADES ----------
               tradeCount > 0 ? trades.map((week, weekIdx) =>
@@ -632,6 +648,7 @@ export default function App() {
             </table>
             <br />
             <br />
+          </div>
           </div>
         )}
       </main>
