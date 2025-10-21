@@ -366,6 +366,7 @@ export default function App() {
                 setTrades([]);
                 setFreeAgents([]);
                 setKey([])
+                setRosters([])
                 alert("User data cleared.");
               }
             }}
