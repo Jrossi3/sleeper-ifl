@@ -119,6 +119,21 @@
   margin: 0 auto;
 }
 
+.clear-button {
+  position: relative;
+  width: 200px;
+  cursor: pointer;
+  font-family: sans-serif;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #aaa;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 10px auto;
+  background-color: white;
+  font-size: 15px;
+}
+
 
 /* Mobile-specific adjustments */
 @media (max-width: 600px) {
