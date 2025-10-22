@@ -29,7 +29,7 @@ export default function App() {
   const [matchups, setMatchups] = useState([])
   const [weeks, setWeek] = useState(0)
   const [dropdownWeeks, setDropdownWeeks] = useState([])
-  const [activeWeek, setActiveWeek] = useState(null)
+  const [activeWeek, setActiveWeek] = useState(0)
   const [weekChecker, setWeekChecker] = useState(false)
 
   let Database = require("./data.json");
@@ -72,6 +72,7 @@ export default function App() {
       setKey([]);
       setRosters([]);
       setMatchups([]);
+      setActiveWeek(0);
       setWeekChecker(false);
       alert("User data cleared.");
     }
@@ -239,35 +240,10 @@ export default function App() {
   // }, []);
 
   useEffect(() => {
-    var weeksTemp = []
+    
     const fetchPlayers = async () => {
       try {
-        const res = await fetch(`https://api.sleeper.app/v1/state/nfl`);
-        const json = await res.json();
-
-        if (year === "2025") {
-          for (let i = 0; i < json.week; i++) {
-            weeksTemp.push(i + 1)
-          }
-          setWeek(json.week);
-          if (activeWeek && weekChecker) {
-            setActiveWeek(activeWeek);
-          } else {
-            setActiveWeek(json.week);
-          }
-          setDropdownWeeks(weeksTemp);
-        } else {
-          for (let i = 0; i < 17; i++) {
-            weeksTemp.push(i + 1)
-          }
-          setWeek(json.week);
-          setDropdownWeeks(weeksTemp);
-          if (activeWeek && weekChecker) {
-            setActiveWeek(activeWeek);
-          } else {
-            setActiveWeek(17);
-          }
-        }
+        
       } catch (err) {
         console.error(err);
       }
@@ -279,10 +255,43 @@ export default function App() {
     if (!leagueId) return; // only fetch when a league is selected
     // Prevent stale fetch if user switches leagues mid-load
     const currentLeague = leagueId;
-    console.log('hello I am here for the year', leagueId, activeWeek)
+    var weeksTemp = []
     const fetchMatchups = async () => {
       try {
-        const res = await fetch(`https://api.sleeper.app/v1/league/${currentLeague}/matchups/${activeWeek}`);
+        const res1 = await fetch(`https://api.sleeper.app/v1/state/nfl`);
+        const json1 = await res1.json();
+        setWeek(json1.week);
+        var currentWeek = 0;
+        if (year === "2025") {
+          for (let i = 0; i < json1.week; i++) {
+            weeksTemp.push(i + 1)
+          }
+          if (activeWeek > json1.week){
+            currentWeek = activeWeek
+            setActiveWeek(json1.week);
+          } else if (activeWeek && weekChecker) {
+            currentWeek = activeWeek
+            setActiveWeek(activeWeek);
+          } else {
+            currentWeek = json1.week
+            setActiveWeek(json1.week);
+          }
+          setDropdownWeeks(weeksTemp);
+        } else {
+          for (let i = 0; i < 17; i++) {
+            weeksTemp.push(i + 1)
+          }
+          setDropdownWeeks(weeksTemp);
+          if (activeWeek && weekChecker) {
+            currentWeek = activeWeek
+            setActiveWeek(activeWeek);
+          } else {
+            currentWeek = 17
+            setActiveWeek(17);
+          }
+        }
+        
+        const res = await fetch(`https://api.sleeper.app/v1/league/${currentLeague}/matchups/${currentWeek}`);
         const json = await res.json();
         console.log(json)
         var matchups = []
@@ -313,7 +322,7 @@ export default function App() {
             }
           }
         }
-        if (newTeam == "") {
+        if (newTeam == "All Teams" || newTeam == "") {
           setMatchups(matchups);
         } else {
           const key = getKeyByValue(teams, newTeam)
@@ -327,7 +336,7 @@ export default function App() {
       }
     };
     fetchMatchups();
-  }, [activeWeek, leagueId, transaction, newTeam]);
+  }, [activeWeek, leagueId, transaction, newTeam, year]);
 
 
   useEffect(() => {
@@ -357,6 +366,7 @@ export default function App() {
           );
           counter = counter + totalTrades[i - 1].length
         }
+        console.log(totalFreeAgents, 'free', transaction)
         setTradeCount(counter)
 
         const users = await fetch(
@@ -411,7 +421,7 @@ export default function App() {
           }))
         );
 
-        if (newTeam === "All Teams") {
+        if (newTeam === "All Teams" || newTeam === "") {
           setTrades(totalTrades);
           setFreeAgents(totalFreeAgents);
           setRosters(roster)
@@ -528,7 +538,7 @@ export default function App() {
                   placeholder={"Select a week"}
                   options={dropdownWeekOptions}
                   onSelect={handleDropdownWeeks}
-                  resetTrigger={user}
+                  resetTrigger={year}
                 /> : null}
               </> : null}
           </div>
@@ -840,7 +850,6 @@ export default function App() {
                                   {p2Data != undefined ? (
                                     <>
                                       {p2Name} <span style={{ color: "#888" }}>{p2Pos != "" ? (p2Pos) : null}</span>
-                                      {p2IsStarter ? " ⭐" : ""}
                                     </>
                                   ) : null}
                                 </td>
