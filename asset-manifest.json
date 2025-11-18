@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/sleeper-ifl/static/css/main.dd77483e.css",
-    "main.js": "/sleeper-ifl/static/js/main.6c6bf4d5.js",
+    "main.js": "/sleeper-ifl/static/js/main.53f1a83f.js",
     "static/js/453.59bb561b.chunk.js": "/sleeper-ifl/static/js/453.59bb561b.chunk.js",
     "index.html": "/sleeper-ifl/index.html",
     "main.dd77483e.css.map": "/sleeper-ifl/static/css/main.dd77483e.css.map",
-    "main.6c6bf4d5.js.map": "/sleeper-ifl/static/js/main.6c6bf4d5.js.map",
+    "main.53f1a83f.js.map": "/sleeper-ifl/static/js/main.53f1a83f.js.map",
     "453.59bb561b.chunk.js.map": "/sleeper-ifl/static/js/453.59bb561b.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.dd77483e.css",
-    "static/js/main.6c6bf4d5.js"
+    "static/js/main.53f1a83f.js"
   ]
 }
