@@ -129,8 +129,8 @@ export default function App() {
       setKey([])
       setUser(value)
       setUserId(userId)
-      setAvailableYears(["2025"])
-      setYear("2025")
+      setAvailableYears(["2026"])
+      setYear("2026")
       setWeekChecker(false);
       setMatchups([])
     } catch (err) {
@@ -246,7 +246,7 @@ export default function App() {
         const json1 = await res1.json();
         setWeek(json1.week);
         var currentWeek = 0;
-        if (year === "2025") {
+        if (year === "2026") {
           for (let i = 0; i < json1.week; i++) {
             weeksTemp.push(i + 1)
           }
