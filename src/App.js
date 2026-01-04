@@ -142,7 +142,7 @@ export default function App() {
   const fetchAvailableYears = async (selectedLeagueName) => {
     if (!idUser) return;
 
-    const yearsToCheck = ["2025", "2024", "2023"];
+    const yearsToCheck = ["2026", "2025", "2024", "2023", "2022", "2021"];
     const activeYears = [];
 
     try {
