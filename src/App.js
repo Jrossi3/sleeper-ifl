@@ -20,10 +20,10 @@ export default function App() {
   const [dropdownTeamOptions, setDropdownTeams] = useState([])
   const [leagueType, setLeagueType] = useState("")
   const [rosters, setRosters] = useState([])
-  const [year, setYear] = useState("2025")
+  const [year, setYear] = useState("2026")
   const [user, setUser] = useState("")
   const [idUser, setUserId] = useState("");
-  const [availableYears, setAvailableYears] = useState(["2025"]);
+  const [availableYears, setAvailableYears] = useState(["2026"]);
   const [tradeCount, setTradeCount] = useState(1)
   const [positions, setLeaguePositions] = useState([])
   const [matchups, setMatchups] = useState([])
@@ -33,7 +33,6 @@ export default function App() {
   const [weekChecker, setWeekChecker] = useState(false)
 
   let Database = require("./data.json");
-  const sport = "nfl";
 
 
   const dropdownYearOptions = availableYears.map((y) => ({ label: y }));
@@ -223,21 +222,6 @@ export default function App() {
     setRosters([]);
     setNewTeam("");
   }, [leagueId]);
-
-
-  // useEffect(() => {
-  //   const fetchPlayers = async () => {
-  //     try {
-  //       const res = await fetch(`https://api.sleeper.app/v1/players/${sport}`);
-  //       const json = await res.json();
-  //       console.log(json, 'players are here')
-  //       setPlayers(json);
-  //     } catch (err) {
-  //       console.error(err);
-  //     }
-  //   };
-  //   fetchPlayers();
-  // }, []);
 
   useEffect(() => {
     
