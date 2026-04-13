@@ -27,7 +27,7 @@ export default function App() {
   const [tradeCount, setTradeCount] = useState(1)
   const [positions, setLeaguePositions] = useState([])
   const [matchups, setMatchups] = useState([])
-  const [weeks, setWeek] = useState(0)
+  const [weeks, setWeek] = useState(17)
   const [dropdownWeeks, setDropdownWeeks] = useState([])
   const [activeWeek, setActiveWeek] = useState(0)
   const [weekChecker, setWeekChecker] = useState(false)
@@ -213,7 +213,6 @@ export default function App() {
   useEffect(() => {
     if (!leagueId) return;
     // Whenever you change leagues, reset team-related state
-    setNewTeam("All Teams");
     setKey([]);
     setTeams({});
     setDropdownTeams([]);
@@ -244,7 +243,7 @@ export default function App() {
       try {
         const res1 = await fetch(`https://api.sleeper.app/v1/state/nfl`);
         const json1 = await res1.json();
-        setWeek(json1.week);
+        // setWeek(json1.week);
         var currentWeek = 0;
         if (year === "2026") {
           for (let i = 0; i < json1.week; i++) {
@@ -320,7 +319,7 @@ export default function App() {
       }
     };
     fetchMatchups();
-  }, [activeWeek, leagueId, transaction, newTeam, year]);
+  }, [activeWeek, leagueId, transaction, newTeam]);
 
 
   useEffect(() => {
@@ -332,7 +331,6 @@ export default function App() {
       let totalFreeAgents = [];
       let totalTrades = [];
       let counter = 0
-
       try {
         for (let i = 1; i <= weeks; i++) {
           const res = await fetch(
@@ -404,7 +402,6 @@ export default function App() {
             notes: dbMap[trade.transaction_id] ?? trade.notes,
           }))
         );
-
         if (newTeam === "All Teams" || newTeam === "") {
           setTrades(totalTrades);
           setFreeAgents(totalFreeAgents);
@@ -439,7 +436,7 @@ export default function App() {
     };
 
     fetchTransactions();
-  }, [newTeam, leagueId, transaction, activeWeek]);
+  }, [newTeam, leagueId, transaction, activeWeek, year]);
 
   function useMediaQuery(query) {
     const mediaQuery = window.matchMedia(query);
@@ -550,7 +547,7 @@ export default function App() {
                                 <th>Team</th>
                                 <th>Players</th>
                                 {leagueType == "Dynasty" ? <th>Draft Picks</th> : null}
-                                {leagueName == "The International Football League" ? <th>Notes</th> : null}
+                                {leagueName == "The International Football League" && year <= "2025" ? <th>Notes</th> : null}
                               </tr>
                             </thead>
                             <tbody>
@@ -610,7 +607,7 @@ export default function App() {
                                         <td>{teams[row.teamId]}</td>
                                         <td>{row.player}</td>
                                         {leagueType == "Dynasty" ? <td>{row.pick}</td> : null}
-                                        {rowIdx === 0 && leagueName == "The International Football League" && (
+                                        {rowIdx === 0 && leagueName == "The International Football League" && year <= "2025" && (
                                           <td rowSpan={rows.length}>
                                             {trade.notes || "No Notes"}
                                           </td>
