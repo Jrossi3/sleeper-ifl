@@ -345,17 +345,16 @@ export default function App() {
     fetchTransactions();
   }, [newTeam, leagueId, transaction, activeWeek, year]);
 
-  // Fetch dynasty picks
+  // Fetch ALL dynasty picks once per league/year — filtering happens in render
   useEffect(() => {
     if (!leagueId || leagueType !== "Dynasty" || !rosters.length) return;
     const currentYear = parseInt(year, 10);
     const years = [currentYear, currentYear + 1, currentYear + 2];
-    const rosterId = newTeam && newTeam !== "All Teams" ? getKeyByValue(teams, newTeam) : null;
 
-    getDynastyPicks(leagueId, rosterId, years, rosters.length)
+    getDynastyPicks(leagueId, null, years, rosters.length)
       .then(setDynastyPicks)
       .catch((err) => console.error("Failed to fetch dynasty picks:", err));
-  }, [leagueId, leagueType, newTeam, rosters, year]);
+  }, [leagueId, leagueType, rosters.length, year]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -388,8 +387,8 @@ export default function App() {
                 {availableYears.length > 1 && (
                   <Dropdown placeholder="Select a year" options={dropdownYearOptions} onSelect={(o) => setYear(o.label)} value={year} />
                 )}
-                <Dropdown placeholder="Select a team" options={dropdownTeamOptions} onSelect={(o) => setNewTeam(o.label)} resetTrigger={leagueId} />
-                <Dropdown placeholder="Select a view" options={dropdownTransactionOptions} onSelect={(o) => setTransactions(o.label)} resetTrigger={user} />
+                {transaction !== "Draft Picks" && <Dropdown placeholder="Select a team" options={dropdownTeamOptions} onSelect={(o) => setNewTeam(o.label)} resetTrigger={leagueId} />}
+                <Dropdown placeholder="Select a view" options={dropdownTransactionOptions} onSelect={(o) => { setTransactions(o.label); if (o.label === "Draft Picks") setNewTeam("All Teams"); }} resetTrigger={user} />
                 {transaction === "Matchups" && (
                   <Dropdown
                     placeholder="Select a week"
@@ -508,16 +507,26 @@ export default function App() {
               {/* ── Draft Picks ── */}
               {transaction === "Draft Picks" && (() => {
                 if (!dynastyPicks.length) return <h3 style={{ textAlign: "center" }}>No dynasty picks data available.</h3>;
-                const ownerNames = newTeam && newTeam !== "All Teams"
-                  ? [newTeam]
-                  : [...new Set(dynastyPicks.map((p) => teams[p.currentOwner] || `Roster ${p.currentOwner}`))].sort();
-                return ownerNames.map((ownerName) => {
+
+                // Determine which roster IDs to show — filter by numeric ID, not team name,
+                // so this works regardless of when `teams` finishes populating.
+                const selectedRosterId = newTeam && newTeam !== "All Teams"
+                  ? Number(getKeyByValue(teams, newTeam))
+                  : null;
+
+                // Get the unique set of owner roster IDs to render sections for
+                const ownerIds = selectedRosterId != null
+                  ? [selectedRosterId]
+                  : [...new Set(dynastyPicks.map((p) => p.currentOwner))].sort((a, b) => a - b);
+
+                return ownerIds.map((ownerId) => {
                   const ownerPicks = dynastyPicks
-                    .filter((p) => (teams[p.currentOwner] || `Roster ${p.currentOwner}`) === ownerName)
+                    .filter((p) => p.currentOwner === ownerId)
                     .sort((a, b) => a.season - b.season || a.round - b.round);
                   if (!ownerPicks.length) return null;
+                  const ownerName = teams[ownerId] || `Roster ${ownerId}`;
                   return (
-                    <div key={ownerName} className="my-4">
+                    <div key={ownerId} className="my-4">
                       <h3 style={{ textAlign: "center" }}>{ownerName} — Draft Picks</h3>
                       <table className="custom-table">
                         <thead><tr><th>Year</th><th>Round</th><th>Original Team</th><th>Acquired via Trade</th></tr></thead>
