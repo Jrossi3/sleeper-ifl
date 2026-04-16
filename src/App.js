@@ -102,21 +102,10 @@ export default function App() {
 
   const clearButton = () => {
     if (!user) return;
-    setUser(""); 
-    setUserId(""); 
-    setLeagueId(""); 
-    setLeagueName("");
-    setLeagueDropdown([]); 
-    setDropdownTeams([]); 
-    setTeams({});
-    setTrades([]); 
-    setFreeAgents([]); 
-    setKey([]); 
-    setRosters([]);
-    setMatchups([]); 
-    setDynastyPicks([]); 
-    setActiveWeek(0); 
-    setWeekChecker(false);
+    setUser(""); setUserId(""); setLeagueId(""); setLeagueName("");
+    setLeagueDropdown([]); setDropdownTeams([]); setTeams({});
+    setTrades([]); setFreeAgents([]); setKey([]); setRosters([]);
+    setMatchups([]); setDynastyPicks([]); setActiveWeek(0); setWeekChecker(false);
     alert("User data cleared.");
   };
 
@@ -284,14 +273,16 @@ export default function App() {
           fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`).then((r) => r.json()),
         ]);
 
-        const userList = usersRes.map((u) => ({
-          team: u.metadata.team_name,
-          owner_id: u.user_id,
-          username: u.display_name,
-        }));
+        // Build a map of owner_id → user for quick lookup
+        const userById = Object.fromEntries(
+          usersRes.map((u) => [u.user_id, { team: u.metadata.team_name, username: u.display_name }])
+        );
+
+        // co_owners is an array of extra owner_ids on the roster (may be null/undefined)
         let roster = rostersRes.map((r) => ({
           roster_id: r.roster_id,
           owner_id: r.owner_id,
+          co_owners: r.co_owners || [],
           players: r.players,
           reserve: r.reserve,
           taxi: r.taxi,
@@ -303,15 +294,24 @@ export default function App() {
         const dropdownTeams = [{ label: "All Teams" }];
         const keyArr = [];
 
-        for (const u of userList) {
-          const teamName = u.team || `Team ${u.username}`;
-          const match = roster.find((r) => r.owner_id === u.owner_id);
-          if (match) {
-            teamsMap[match.roster_id] = teamName;
-            dropdownTeams.push({ label: teamName });
-            match.team_name = teamName;
-          }
-          keyArr.push({ team: teamName, username: u.username });
+        for (const r of roster) {
+          // Collect all owner_ids for this roster (primary + co-owners)
+          const allOwnerIds = [r.owner_id, ...r.co_owners].filter(Boolean);
+          const owners = allOwnerIds.map((id) => userById[id]).filter(Boolean);
+
+          // Team name: prefer the primary owner's custom team name, else fall back to combined usernames
+          const primaryUser = userById[r.owner_id];
+          const teamName =
+            primaryUser?.team ||
+            (owners.length > 0 ? `Team ${owners.map((o) => o.username).join(" & ")}` : `Roster ${r.roster_id}`);
+
+          // Combined usernames for the key table (e.g. "alice & bob")
+          const combinedUsernames = owners.map((o) => o.username).join(" & ") || `Roster ${r.roster_id}`;
+
+          teamsMap[r.roster_id] = teamName;
+          dropdownTeams.push({ label: teamName });
+          r.team_name = teamName;
+          keyArr.push({ team: teamName, username: combinedUsernames });
         }
 
         setRosters(roster);
