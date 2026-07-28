@@ -3,6 +3,9 @@ import "./App.css";
 import Dropdown from "./components/dropdown";
 import TextInput from "./components/TextInput";
 import GridDisplay from "./components/GridDisplays";
+import { fetchTeamContracts, findContract, CAP_TOTAL } from "./utils/contractSheet";
+import { loadPlayers } from "./utils/playerCache";
+import CapCalculator from "./components/CapCalculator";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -21,6 +24,12 @@ const formatDate = (ms) =>
   new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 const getKeyByValue = (obj, val) => Object.keys(obj).find((k) => obj[k] === val);
+
+// The cap/contract system (Cap Calculator, contract columns on Rosters,
+// dead-cap offsets) is a homebrew IFL rule set, not something Sleeper
+// tracks — it only applies to this specific league, never to any other
+// league a visitor might look up on this same site.
+const IFL_LEAGUE_NAME = "The International Football League";
 
 /**
  * Reconstructs current draft pick ownership by replaying Sleeper's traded_picks log.
@@ -51,11 +60,11 @@ async function getDynastyPicks(leagueId, rosterId, years, totalTeams, rounds = 4
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const playerDatabase = require("./playerData.json");
   const Database = require("./data.json");
 
   const [loading, setLoading] = useState(false);
-  const [players] = useState(playerDatabase);
+  const [players, setPlayers] = useState({});
+  const [playersLoading, setPlayersLoading] = useState(true);
   const [trades, setTrades] = useState([]);
   const [freeAgents, setFreeAgents] = useState([]);
   const [rosters, setRosters] = useState([]);
@@ -64,6 +73,25 @@ export default function App() {
   const [dropdownTeamOptions, setDropdownTeams] = useState([]);
   const [dynastyPicks, setDynastyPicks] = useState([]);
   const [matchups, setMatchups] = useState([]);
+  const [contractsByTeam, setContractsByTeam] = useState({});
+  const [contractsLoading, setContractsLoading] = useState(false);
+
+  // Fetch the Sleeper player database once (cached in localStorage — see
+  // src/utils/playerCache.js) instead of bundling ~19MB into the app.
+  useEffect(() => {
+    let cancelled = false;
+    loadPlayers()
+      .then((data) => {
+        if (!cancelled) setPlayers(data);
+      })
+      .catch((err) => console.error("Failed to load player database:", err))
+      .finally(() => {
+        if (!cancelled) setPlayersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [user, setUser] = useState("");
   const [idUser, setUserId] = useState("");
@@ -95,6 +123,7 @@ export default function App() {
     { label: "Free Agent Transactions" },
     { label: "Rosters and Records" },
     { label: "Matchups" },
+    ...(leagueName === IFL_LEAGUE_NAME ? [{ label: "Cap Calculator" }] : []),
     ...(leagueType === "Dynasty" ? [{ label: "Draft Picks" }] : []),
   ];
 
@@ -102,10 +131,21 @@ export default function App() {
 
   const clearButton = () => {
     if (!user) return;
-    setUser(""); setUserId(""); setLeagueId(""); setLeagueName("");
-    setLeagueDropdown([]); setDropdownTeams([]); setTeams({});
-    setTrades([]); setFreeAgents([]); setKey([]); setRosters([]);
-    setMatchups([]); setDynastyPicks([]); setActiveWeek(0); setWeekChecker(false);
+    setUser(""); 
+    setUserId(""); 
+    setLeagueId(""); 
+    setLeagueName("");
+    setLeagueDropdown([]); 
+    setDropdownTeams([]); 
+    setTeams({});
+    setTrades([]); 
+    setFreeAgents([]); 
+    setKey([]); 
+    setRosters([]);
+    setMatchups([]); 
+    setDynastyPicks([]); 
+    setActiveWeek(0); 
+    setWeekChecker(false);
     alert("User data cleared.");
   };
 
@@ -189,6 +229,8 @@ export default function App() {
     if (!leagueId) return;
     setKey([]); setTeams({}); setDropdownTeams([]); setTrades([]);
     setFreeAgents([]); setRosters([]); setNewTeam(""); setDynastyPicks([]);
+    setContractsByTeam({});
+    setTransactions("Trades"); // always fall back to the default view on a league switch
   }, [leagueId]);
 
   // Fetch matchups
@@ -273,16 +315,14 @@ export default function App() {
           fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`).then((r) => r.json()),
         ]);
 
-        // Build a map of owner_id → user for quick lookup
-        const userById = Object.fromEntries(
-          usersRes.map((u) => [u.user_id, { team: u.metadata.team_name, username: u.display_name }])
-        );
-
-        // co_owners is an array of extra owner_ids on the roster (may be null/undefined)
+        const userList = usersRes.map((u) => ({
+          team: u.metadata.team_name,
+          owner_id: u.user_id,
+          username: u.display_name,
+        }));
         let roster = rostersRes.map((r) => ({
           roster_id: r.roster_id,
           owner_id: r.owner_id,
-          co_owners: r.co_owners || [],
           players: r.players,
           reserve: r.reserve,
           taxi: r.taxi,
@@ -294,24 +334,15 @@ export default function App() {
         const dropdownTeams = [{ label: "All Teams" }];
         const keyArr = [];
 
-        for (const r of roster) {
-          // Collect all owner_ids for this roster (primary + co-owners)
-          const allOwnerIds = [r.owner_id, ...r.co_owners].filter(Boolean);
-          const owners = allOwnerIds.map((id) => userById[id]).filter(Boolean);
-
-          // Team name: prefer the primary owner's custom team name, else fall back to combined usernames
-          const primaryUser = userById[r.owner_id];
-          const teamName =
-            primaryUser?.team ||
-            (owners.length > 0 ? `Team ${owners.map((o) => o.username).join(" & ")}` : `Roster ${r.roster_id}`);
-
-          // Combined usernames for the key table (e.g. "alice & bob")
-          const combinedUsernames = owners.map((o) => o.username).join(" & ") || `Roster ${r.roster_id}`;
-
-          teamsMap[r.roster_id] = teamName;
-          dropdownTeams.push({ label: teamName });
-          r.team_name = teamName;
-          keyArr.push({ team: teamName, username: combinedUsernames });
+        for (const u of userList) {
+          const teamName = u.team || `Team ${u.username}`;
+          const match = roster.find((r) => r.owner_id === u.owner_id);
+          if (match) {
+            teamsMap[match.roster_id] = teamName;
+            dropdownTeams.push({ label: teamName });
+            match.team_name = teamName;
+          }
+          keyArr.push({ team: teamName, username: u.username });
         }
 
         setRosters(roster);
@@ -345,16 +376,51 @@ export default function App() {
     fetchTransactions();
   }, [newTeam, leagueId, transaction, activeWeek, year]);
 
-  // Fetch ALL dynasty picks once per league/year — filtering happens in render
+  // Fetch dynasty picks
   useEffect(() => {
     if (!leagueId || leagueType !== "Dynasty" || !rosters.length) return;
     const currentYear = parseInt(year, 10);
     const years = [currentYear, currentYear + 1, currentYear + 2];
+    const rosterId = newTeam && newTeam !== "All Teams" ? getKeyByValue(teams, newTeam) : null;
 
-    getDynastyPicks(leagueId, null, years, rosters.length)
+    getDynastyPicks(leagueId, rosterId, years, rosters.length)
       .then(setDynastyPicks)
       .catch((err) => console.error("Failed to fetch dynasty picks:", err));
-  }, [leagueId, leagueType, rosters.length, year]);
+  }, [leagueId, leagueType, newTeam, rosters, year]);
+
+  // Fetch live cap/contract data from the Google Sheet whenever the
+  // Rosters view or Cap Calculator is open. Re-fetches on every visit
+  // (subject to the utility's own 5-minute cache), so it always reflects
+  // the current state of the sheet without needing a rebuild/deploy.
+  useEffect(() => {
+    const needsContracts =
+      leagueName === IFL_LEAGUE_NAME &&
+      (transaction === "Rosters and Records" || transaction === "Cap Calculator");
+    if (!needsContracts || !rosters.length) return;
+    let cancelled = false;
+
+    const load = async () => {
+      setContractsLoading(true);
+      const teamNames = [...new Set(rosters.map((r) => r.team_name).filter(Boolean))];
+      const entries = await Promise.all(
+        teamNames.map(async (name) => {
+          try {
+            return [name, await fetchTeamContracts(name)];
+          } catch (err) {
+            console.error(err);
+            return [name, null];
+          }
+        })
+      );
+      if (!cancelled) setContractsByTeam(Object.fromEntries(entries));
+      setContractsLoading(false);
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [transaction, rosters]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -380,6 +446,9 @@ export default function App() {
         {user.length > 0 && (
           <div style={divStyle}>
             <p>Welcome {user}</p>
+            {playersLoading && (
+              <p style={{ color: "#888", fontSize: "0.85em" }}>Loading player database…</p>
+            )}
             <Dropdown placeholder="Select a League" options={dropdownLeagueOptions} onSelect={handleDropdownLeague} resetTrigger={user} />
 
             {leagueName && (
@@ -387,8 +456,8 @@ export default function App() {
                 {availableYears.length > 1 && (
                   <Dropdown placeholder="Select a year" options={dropdownYearOptions} onSelect={(o) => setYear(o.label)} value={year} />
                 )}
-                {transaction !== "Draft Picks" && <Dropdown placeholder="Select a team" options={dropdownTeamOptions} onSelect={(o) => setNewTeam(o.label)} resetTrigger={leagueId} />}
-                <Dropdown placeholder="Select a view" options={dropdownTransactionOptions} onSelect={(o) => { setTransactions(o.label); if (o.label === "Draft Picks") setNewTeam("All Teams"); }} resetTrigger={user} />
+                <Dropdown placeholder="Select a team" options={dropdownTeamOptions} onSelect={(o) => setNewTeam(o.label)} resetTrigger={leagueId} />
+                <Dropdown placeholder="Select a view" options={dropdownTransactionOptions} onSelect={(o) => setTransactions(o.label)} resetTrigger={`${user}|${leagueId}`} />
                 {transaction === "Matchups" && (
                   <Dropdown
                     placeholder="Select a week"
@@ -507,26 +576,16 @@ export default function App() {
               {/* ── Draft Picks ── */}
               {transaction === "Draft Picks" && (() => {
                 if (!dynastyPicks.length) return <h3 style={{ textAlign: "center" }}>No dynasty picks data available.</h3>;
-
-                // Determine which roster IDs to show — filter by numeric ID, not team name,
-                // so this works regardless of when `teams` finishes populating.
-                const selectedRosterId = newTeam && newTeam !== "All Teams"
-                  ? Number(getKeyByValue(teams, newTeam))
-                  : null;
-
-                // Get the unique set of owner roster IDs to render sections for
-                const ownerIds = selectedRosterId != null
-                  ? [selectedRosterId]
-                  : [...new Set(dynastyPicks.map((p) => p.currentOwner))].sort((a, b) => a - b);
-
-                return ownerIds.map((ownerId) => {
+                const ownerNames = newTeam && newTeam !== "All Teams"
+                  ? [newTeam]
+                  : [...new Set(dynastyPicks.map((p) => teams[p.currentOwner] || `Roster ${p.currentOwner}`))].sort();
+                return ownerNames.map((ownerName) => {
                   const ownerPicks = dynastyPicks
-                    .filter((p) => p.currentOwner === ownerId)
+                    .filter((p) => (teams[p.currentOwner] || `Roster ${p.currentOwner}`) === ownerName)
                     .sort((a, b) => a.season - b.season || a.round - b.round);
                   if (!ownerPicks.length) return null;
-                  const ownerName = teams[ownerId] || `Roster ${ownerId}`;
                   return (
-                    <div key={ownerId} className="my-4">
+                    <div key={ownerName} className="my-4">
                       <h3 style={{ textAlign: "center" }}>{ownerName} — Draft Picks</h3>
                       <table className="custom-table">
                         <thead><tr><th>Year</th><th>Round</th><th>Original Team</th><th>Acquired via Trade</th></tr></thead>
@@ -547,36 +606,131 @@ export default function App() {
               })()}
 
               {/* ── Rosters ── */}
-              {transaction === "Rosters and Records" &&
-                rosters.map((roster, rosterIdx) => {
-                  const playerList = roster.players || [];
-                  const irList = roster.reserve || [];
-                  const taxiList = roster.taxi || [];
-                  const maxLen = Math.max(playerList.length, irList.length, taxiList.length);
-                  return (
-                    <div key={rosterIdx} className="my-4">
-                      <h3 style={{ textAlign: "center" }}>{roster.team_name} - Record: {roster.wins}-{roster.losses}</h3>
-                      <table className="custom-table">
-                        <thead>
-                          <tr>
-                            <th>Players</th><th>IR</th>
-                            {leagueType === "Dynasty" && <th>Taxi</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[...Array(maxLen)].map((_, i) => (
-                            <tr key={i}>
-                              <td>{players[playerList[i]]?.first_name ?? ""} {players[playerList[i]]?.last_name ?? ""}</td>
-                              <td>{players[irList[i]]?.full_name ?? ""}</td>
-                              {leagueType === "Dynasty" && <td>{players[taxiList[i]]?.full_name ?? ""}</td>}
+              {transaction === "Rosters and Records" && (
+                <>
+                  {contractsLoading && <p style={{ textAlign: "center" }}>Loading contract data…</p>}
+                  {rosters.map((roster, rosterIdx) => {
+                    const playerList = roster.players || [];
+                    const irList = roster.reserve || [];
+                    const taxiList = roster.taxi || [];
+
+                    const teamContracts = contractsByTeam[roster.team_name];
+                    // Prefer the currently-selected year if the sheet tracks it, else fall back to the first year column it has.
+                    const capYear =
+                      teamContracts?.years?.includes(year) ? year : teamContracts?.years?.[0];
+
+                    // Sleeper has no squad data synced for the IFL — rosters are
+                    // managed through the contract sheet / auction rather than
+                    // Sleeper's native add/drop flow. When Sleeper comes back
+                    // empty, use the contract sheet itself as the roster source
+                    // instead of showing a blank team.
+                    const useSheetAsRoster = playerList.length === 0 && !!teamContracts?.players?.length;
+
+                    const rows = useSheetAsRoster
+                      ? teamContracts.players.map((cp) => {
+                          const rawHit = capYear ? cp.capByYear?.[capYear] : null;
+                          const hit = capYear ? cp.netCapByYear?.[capYear] ?? rawHit : null;
+                          return {
+                            name: cp.name,
+                            position: cp.position,
+                            contractEnd: cp.contractEnd,
+                            hit,
+                            rawHit,
+                          };
+                        })
+                      : playerList.map((pid) => {
+                          const p = players[pid];
+                          const contract =
+                            teamContracts && p
+                              ? findContract(teamContracts.players, `${p.first_name} ${p.last_name}`)
+                              : null;
+                          const rawHit = capYear ? contract?.capByYear?.[capYear] : null;
+                          const hit = capYear ? contract?.netCapByYear?.[capYear] ?? rawHit : null;
+                          return {
+                            name: p ? `${p.first_name} ${p.last_name}` : "",
+                            position: p?.position ?? "",
+                            contractEnd: contract?.contractEnd ?? "",
+                            hit,
+                            rawHit,
+                          };
+                        });
+
+                    const maxLen = Math.max(rows.length, irList.length, taxiList.length);
+
+                    const capSpent =
+                      teamContracts && capYear
+                        ? rows.reduce((sum, r) => sum + (typeof r.hit === "number" ? r.hit : 0), 0)
+                        : null;
+
+                    return (
+                      <div key={rosterIdx} className="my-4">
+                        <h3 style={{ textAlign: "center" }}>{roster.team_name} - Record: {roster.wins}-{roster.losses}</h3>
+                        {useSheetAsRoster && (
+                          <p style={{ fontSize: "0.8em", color: "#888" }}>
+                            Roster shown from the contract sheet — Sleeper has no synced roster for this team.
+                          </p>
+                        )}
+                        {teamContracts && capYear && (
+                          <p style={{ textAlign: "center" }}>
+                            {capYear} Cap Spent: <strong>${capSpent}</strong> / ${CAP_TOTAL}
+                            &nbsp;•&nbsp; Remaining: <strong>${CAP_TOTAL - capSpent}</strong>
+                          </p>
+                        )}
+                        <table className="custom-table">
+                          <thead>
+                            <tr>
+                              <th>Player</th>
+                              <th>Pos</th>
+                              {teamContracts && (
+                                <>
+                                  <th>Contract Ends</th>
+                                  <th>{capYear ? `${capYear} Cap Hit` : "Cap Hit"}</th>
+                                </>
+                              )}
+                              {!useSheetAsRoster && <th>IR</th>}
+                              {!useSheetAsRoster && leagueType === "Dynasty" && <th>Taxi</th>}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })
-              }
+                          </thead>
+                          <tbody>
+                            {[...Array(maxLen)].map((_, i) => {
+                              const row = rows[i];
+                              const isOffset =
+                                row && row.hit != null && row.rawHit != null && row.hit !== row.rawHit;
+                              return (
+                                <tr key={i}>
+                                  <td>{row?.name ?? ""}</td>
+                                  <td>{row?.position ?? ""}</td>
+                                  {teamContracts && (
+                                    <>
+                                      <td>{row?.contractEnd ?? ""}</td>
+                                      <td
+                                        title={
+                                          isOffset ? `$${row.rawHit} drafted, offset to $${row.hit}` : undefined
+                                        }
+                                      >
+                                        {row?.hit != null ? `$${row.hit}${isOffset ? " *" : ""}` : ""}
+                                      </td>
+                                    </>
+                                  )}
+                                  {!useSheetAsRoster && <td>{players[irList[i]]?.full_name ?? ""}</td>}
+                                  {!useSheetAsRoster && leagueType === "Dynasty" && (
+                                    <td>{players[taxiList[i]]?.full_name ?? ""}</td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {teamContracts && (
+                          <p style={{ textAlign: "center", fontSize: "0.8em", color: "#888" }}>
+                            * cap hit adjusted by a dead-cap / trade offset — hover for details
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
 
               {/* ── Matchups ── */}
               {transaction === "Matchups" &&
@@ -636,6 +790,11 @@ export default function App() {
                   );
                 })
               }
+
+              {/* ── Cap Calculator ── */}
+              {transaction === "Cap Calculator" && (
+                <CapCalculator contractsByTeam={contractsByTeam} currentYear={year} />
+              )}
             </div>
 
             {/* ── Team / Username key ── */}
