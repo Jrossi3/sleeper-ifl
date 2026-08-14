@@ -47,17 +47,17 @@ export default function CapCalculator({ contractsByTeam, currentYear }) {
 
   const remainingYears = useMemo(() => {
     if (!contract || !teamContracts) return [];
+    const netFor = (y) => contract.netCapByYear?.[y] ?? contract.capByYear?.[y];
     const startIdx = teamContracts.years.indexOf(currentYear);
-    if (startIdx === -1) return teamContracts.years.filter((y) => contract.capByYear[y] != null);
-    return teamContracts.years.slice(startIdx).filter((y) => contract.capByYear[y] != null);
+    const yearsFromNow =
+      startIdx === -1 ? teamContracts.years : teamContracts.years.slice(startIdx);
+    return yearsFromNow.filter((y) => netFor(y) != null);
   }, [contract, teamContracts, currentYear]);
 
-  const remainingTotal = remainingYears.reduce(
-    (sum, y) => sum + (contract?.capByYear[y] || 0),
-    0
-  );
+  const netFor = (y) => (contract?.netCapByYear?.[y] ?? contract?.capByYear?.[y]) || 0;
+  const remainingTotal = remainingYears.reduce((sum, y) => sum + netFor(y), 0);
   const buyoutCost = Math.round(remainingTotal * 0.25 * 100) / 100;
-  const thisYearFreed = (contract && contract.capByYear[currentYear]) || 0;
+  const thisYearFreed = contract ? netFor(currentYear) : 0;
 
   const btnStyle = (active) => ({
     padding: "6px 14px",
@@ -154,7 +154,7 @@ export default function CapCalculator({ contractsByTeam, currentYear }) {
                   </option>
                 ))}
               </select>
-              {teamContracts && (
+              {teamContracts && teamContracts.players.length > 0 && (
                 <select
                   value={buyoutPlayerName}
                   onChange={(e) => setBuyoutPlayerName(e.target.value)}
@@ -166,6 +166,12 @@ export default function CapCalculator({ contractsByTeam, currentYear }) {
                     </option>
                   ))}
                 </select>
+              )}
+              {teamContracts && teamContracts.players.length === 0 && (
+                <p style={{ color: "#888", fontSize: "0.85em" }}>
+                  No player contracts were found for this team — check the browser console for a
+                  parsing warning, or verify the sheet's column headers.
+                </p>
               )}
 
               {contract && (
@@ -182,7 +188,7 @@ export default function CapCalculator({ contractsByTeam, currentYear }) {
                     <tbody>
                       <tr>
                         {remainingYears.map((y) => (
-                          <td key={y}>${contract.capByYear[y]}</td>
+                          <td key={y}>${netFor(y)}</td>
                         ))}
                         <td>
                           <strong>${remainingTotal.toFixed(2)}</strong>

@@ -3,7 +3,7 @@ import "./App.css";
 import Dropdown from "./components/dropdown";
 import TextInput from "./components/TextInput";
 import GridDisplay from "./components/GridDisplays";
-import { fetchTeamContracts, findContract, CAP_TOTAL } from "./utils/contractSheet";
+import { fetchTeamContracts, findContract } from "./utils/contractSheet";
 import { loadPlayers } from "./utils/playerCache";
 import CapCalculator from "./components/CapCalculator";
 
@@ -118,12 +118,15 @@ export default function App() {
 
   const dropdownYearOptions = availableYears.map((y) => ({ label: y }));
   const dropdownWeekOptions = dropdownWeeks.map((w) => ({ label: `Week ${w}`, value: w }));
+  // availableYears is sorted descending, so index 0 is always the current/most recent season.
+  const isCurrentSeason = year === availableYears[0];
+
   const dropdownTransactionOptions = [
     { label: "Trades" },
     { label: "Free Agent Transactions" },
     { label: "Rosters and Records" },
     { label: "Matchups" },
-    ...(leagueName === IFL_LEAGUE_NAME ? [{ label: "Cap Calculator" }] : []),
+    ...(leagueName === IFL_LEAGUE_NAME && isCurrentSeason ? [{ label: "Cap Calculator" }] : []),
     ...(leagueType === "Dynasty" ? [{ label: "Draft Picks" }] : []),
   ];
 
@@ -232,6 +235,16 @@ export default function App() {
     setContractsByTeam({});
     setTransactions("Trades"); // always fall back to the default view on a league switch
   }, [leagueId]);
+
+  // Belt-and-suspenders: Cap Calculator is only ever valid for the current
+  // season. Rather than rely solely on the league-change reset above (which
+  // depends on year-switching also producing a new leagueId), check this
+  // directly so an out-of-date view can never linger.
+  useEffect(() => {
+    if (!isCurrentSeason && transaction === "Cap Calculator") {
+      setTransactions("Trades");
+    }
+  }, [isCurrentSeason, transaction]);
 
   // Fetch matchups
   useEffect(() => {
@@ -395,6 +408,7 @@ export default function App() {
   useEffect(() => {
     const needsContracts =
       leagueName === IFL_LEAGUE_NAME &&
+      isCurrentSeason &&
       (transaction === "Rosters and Records" || transaction === "Cap Calculator");
     if (!needsContracts || !rosters.length) return;
     let cancelled = false;
@@ -457,7 +471,7 @@ export default function App() {
                   <Dropdown placeholder="Select a year" options={dropdownYearOptions} onSelect={(o) => setYear(o.label)} value={year} />
                 )}
                 <Dropdown placeholder="Select a team" options={dropdownTeamOptions} onSelect={(o) => setNewTeam(o.label)} resetTrigger={leagueId} />
-                <Dropdown placeholder="Select a view" options={dropdownTransactionOptions} onSelect={(o) => setTransactions(o.label)} resetTrigger={`${user}|${leagueId}`} />
+                <Dropdown placeholder="Select a view" options={dropdownTransactionOptions} onSelect={(o) => setTransactions(o.label)} resetTrigger={`${user}|${leagueId}|${year}`} />
                 {transaction === "Matchups" && (
                   <Dropdown
                     placeholder="Select a week"
@@ -608,59 +622,62 @@ export default function App() {
               {/* ── Rosters ── */}
               {transaction === "Rosters and Records" && (
                 <>
+                  {/* eslint-disable-next-line no-console */}
+                  {console.log(
+                    `[Rosters] year=${JSON.stringify(year)} availableYears[0]=${JSON.stringify(
+                      availableYears[0]
+                    )} isCurrentSeason=${isCurrentSeason}`
+                  )}
                   {contractsLoading && <p style={{ textAlign: "center" }}>Loading contract data…</p>}
                   {rosters.map((roster, rosterIdx) => {
                     const playerList = roster.players || [];
                     const irList = roster.reserve || [];
                     const taxiList = roster.taxi || [];
 
-                    const teamContracts = contractsByTeam[roster.team_name];
-                    // Prefer the currently-selected year if the sheet tracks it, else fall back to the first year column it has.
-                    const capYear =
-                      teamContracts?.years?.includes(year) ? year : teamContracts?.years?.[0];
+                    // Cap/contract data only ever applies to the current season —
+                    // past years show a plain Sleeper roster (Player, Pos, IR,
+                    // Taxi) with no cost/contract info at all.
+                    const teamContracts = isCurrentSeason ? contractsByTeam[roster.team_name] : null;
+                    const contractYears = teamContracts?.years || [];
 
                     // Sleeper has no squad data synced for the IFL — rosters are
                     // managed through the contract sheet / auction rather than
                     // Sleeper's native add/drop flow. When Sleeper comes back
-                    // empty, use the contract sheet itself as the roster source
-                    // instead of showing a blank team.
-                    const useSheetAsRoster = playerList.length === 0 && !!teamContracts?.players?.length;
+                    // empty (current season only), use the contract sheet itself
+                    // as the roster source instead of showing a blank team.
+                    const useSheetAsRoster =
+                      isCurrentSeason && playerList.length === 0 && !!teamContracts?.players?.length;
 
                     const rows = useSheetAsRoster
-                      ? teamContracts.players.map((cp) => {
-                          const rawHit = capYear ? cp.capByYear?.[capYear] : null;
-                          const hit = capYear ? cp.netCapByYear?.[capYear] ?? rawHit : null;
-                          return {
-                            name: cp.name,
-                            position: cp.position,
-                            contractEnd: cp.contractEnd,
-                            hit,
-                            rawHit,
-                          };
-                        })
+                      ? teamContracts.players.map((cp) => ({
+                          name: cp.name,
+                          position: cp.position,
+                          contractEnd: cp.contractEnd,
+                          hitByYear: cp.netCapByYear || {},
+                          rawByYear: cp.capByYear || {},
+                        }))
                       : playerList.map((pid) => {
                           const p = players[pid];
                           const contract =
                             teamContracts && p
                               ? findContract(teamContracts.players, `${p.first_name} ${p.last_name}`)
                               : null;
-                          const rawHit = capYear ? contract?.capByYear?.[capYear] : null;
-                          const hit = capYear ? contract?.netCapByYear?.[capYear] ?? rawHit : null;
                           return {
                             name: p ? `${p.first_name} ${p.last_name}` : "",
                             position: p?.position ?? "",
                             contractEnd: contract?.contractEnd ?? "",
-                            hit,
-                            rawHit,
+                            hitByYear: contract?.netCapByYear || {},
+                            rawByYear: contract?.capByYear || {},
                           };
                         });
 
                     const maxLen = Math.max(rows.length, irList.length, taxiList.length);
 
-                    const capSpent =
-                      teamContracts && capYear
-                        ? rows.reduce((sum, r) => sum + (typeof r.hit === "number" ? r.hit : 0), 0)
-                        : null;
+                    // Spent/Remaining come straight from the sheet's own
+                    // "Draft Cap Spent:" / "Remaining Budget:" rows — the
+                    // sheet already accounts for every source of dead money,
+                    // so there's no need to reconstruct it here.
+                    const budgetByYear = teamContracts?.budgetByYear || {};
 
                     return (
                       <div key={rosterIdx} className="my-4">
@@ -670,23 +687,48 @@ export default function App() {
                             Roster shown from the contract sheet — Sleeper has no synced roster for this team.
                           </p>
                         )}
-                        {teamContracts && capYear && (
-                          <p style={{ textAlign: "center" }}>
-                            {capYear} Cap Spent: <strong>${capSpent}</strong> / ${CAP_TOTAL}
-                            &nbsp;•&nbsp; Remaining: <strong>${CAP_TOTAL - capSpent}</strong>
-                          </p>
+
+                        {teamContracts && contractYears.length > 0 && (
+                          <table className="custom-table" style={{ margin: "0.5rem auto 1rem" }}>
+                            <thead>
+                              <tr>
+                                <th>Cap</th>
+                                {contractYears.map((y) => (
+                                  <th key={y}>{y}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td>Spent</td>
+                                {contractYears.map((y) => (
+                                  <td key={y}>
+                                    {budgetByYear[y]?.spent != null ? `$${budgetByYear[y].spent}` : "—"}
+                                  </td>
+                                ))}
+                              </tr>
+                              <tr>
+                                <td>Remaining</td>
+                                {contractYears.map((y) => (
+                                  <td key={y}>
+                                    <strong>
+                                      {budgetByYear[y]?.remaining != null ? `$${budgetByYear[y].remaining}` : "—"}
+                                    </strong>
+                                  </td>
+                                ))}
+                              </tr>
+                            </tbody>
+                          </table>
                         )}
+
                         <table className="custom-table">
                           <thead>
                             <tr>
                               <th>Player</th>
                               <th>Pos</th>
-                              {teamContracts && (
-                                <>
-                                  <th>Contract Ends</th>
-                                  <th>{capYear ? `${capYear} Cap Hit` : "Cap Hit"}</th>
-                                </>
-                              )}
+                              {teamContracts && <th>Contract Ends</th>}
+                              {teamContracts &&
+                                contractYears.map((y) => <th key={y}>{y}</th>)}
                               {!useSheetAsRoster && <th>IR</th>}
                               {!useSheetAsRoster && leagueType === "Dynasty" && <th>Taxi</th>}
                             </tr>
@@ -694,24 +736,25 @@ export default function App() {
                           <tbody>
                             {[...Array(maxLen)].map((_, i) => {
                               const row = rows[i];
-                              const isOffset =
-                                row && row.hit != null && row.rawHit != null && row.hit !== row.rawHit;
                               return (
                                 <tr key={i}>
                                   <td>{row?.name ?? ""}</td>
                                   <td>{row?.position ?? ""}</td>
-                                  {teamContracts && (
-                                    <>
-                                      <td>{row?.contractEnd ?? ""}</td>
-                                      <td
-                                        title={
-                                          isOffset ? `$${row.rawHit} drafted, offset to $${row.hit}` : undefined
-                                        }
-                                      >
-                                        {row?.hit != null ? `$${row.hit}${isOffset ? " *" : ""}` : ""}
-                                      </td>
-                                    </>
-                                  )}
+                                  {teamContracts && <td>{row?.contractEnd ?? ""}</td>}
+                                  {teamContracts &&
+                                    contractYears.map((y) => {
+                                      const hit = row?.hitByYear?.[y];
+                                      const raw = row?.rawByYear?.[y];
+                                      const isOffset = hit != null && raw != null && hit !== raw;
+                                      return (
+                                        <td
+                                          key={y}
+                                          title={isOffset ? `$${raw} drafted, offset to $${hit}` : undefined}
+                                        >
+                                          {hit != null ? `$${hit}${isOffset ? " *" : ""}` : ""}
+                                        </td>
+                                      );
+                                    })}
                                   {!useSheetAsRoster && <td>{players[irList[i]]?.full_name ?? ""}</td>}
                                   {!useSheetAsRoster && leagueType === "Dynasty" && (
                                     <td>{players[taxiList[i]]?.full_name ?? ""}</td>
