@@ -336,6 +336,7 @@ export default function App() {
         let roster = rostersRes.map((r) => ({
           roster_id: r.roster_id,
           owner_id: r.owner_id,
+          co_owners: r.co_owners || [],
           players: r.players,
           reserve: r.reserve,
           taxi: r.taxi,
@@ -345,18 +346,38 @@ export default function App() {
 
         const teamsMap = {};
         const dropdownTeams = [{ label: "All Teams" }];
-        const keyArr = [];
 
+        // First pass: each roster's team name comes from its primary owner only.
+        const rosterTeamName = {};
         for (const u of userList) {
-          const teamName = u.team || `Team ${u.username}`;
           const match = roster.find((r) => r.owner_id === u.owner_id);
           if (match) {
+            const teamName = u.team || `Team ${u.username}`;
+            rosterTeamName[match.roster_id] = teamName;
             teamsMap[match.roster_id] = teamName;
             dropdownTeams.push({ label: teamName });
             match.team_name = teamName;
           }
-          keyArr.push({ team: teamName, username: u.username });
         }
+
+        // Second pass: build the key. A co-owner (listed in a roster's
+        // co_owners, not its primary owner_id) is grouped under that same
+        // team instead of falling back to a fake standalone "Team
+        // {username}" entry — then usernames sharing a team are combined
+        // into one row rather than one row per person.
+        const usernamesByTeam = new Map();
+        for (const u of userList) {
+          const owned = roster.find((r) => r.owner_id === u.owner_id);
+          const coOwned = owned ? null : roster.find((r) => r.co_owners.includes(u.owner_id));
+          const match = owned || coOwned;
+          const teamName = match ? rosterTeamName[match.roster_id] : u.team || `Team ${u.username}`;
+          if (!usernamesByTeam.has(teamName)) usernamesByTeam.set(teamName, []);
+          usernamesByTeam.get(teamName).push(u.username);
+        }
+        const keyArr = [...usernamesByTeam.entries()].map(([team, usernames]) => ({
+          team,
+          username: usernames.join(", "),
+        }));
 
         setRosters(roster);
         setTeams(teamsMap);
