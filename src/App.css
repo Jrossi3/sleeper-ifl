@@ -1,156 +1,455 @@
-.App {
-  text-align: center;
-}
+/* ────────────────────────────────────────────────────────────────────────
+   IFL design system — "under the floodlights"
+   A night-pitch surface (deep green-black), chalk-white type, and a warm
+   stadium-floodlight gold reserved for the one signature move: team
+   nameplates and the numbers that matter (cap ledger, scores, records).
+   ──────────────────────────────────────────────────────────────────────── */
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
+   .App {
+    text-align: center;
   }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
-}
-
-.App-link {
-  color: #61dafb;
-}
-
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
+  
+  main.p-4 {
+    padding: 0 0 4rem;
+    max-width: 1100px;
+    margin: 0 auto;
   }
-  to {
-    transform: rotate(360deg);
+  
+  /* ── Hero ─────────────────────────────────────────────────────────────── */
+  
+  .ifl-hero {
+    position: relative;
+    overflow: hidden;
+    padding: 3.5rem 1.5rem 3rem;
+    margin-bottom: 1.5rem;
+    background:
+      radial-gradient(ellipse 900px 420px at 50% -10%, rgba(245, 184, 48, 0.16), transparent 65%),
+      linear-gradient(180deg, var(--pitch-deep) 0%, var(--pitch) 100%);
+    border-bottom: 1px solid var(--turf-line);
   }
-}
-
-.positions-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr); /* 3 columns */
-  grid-auto-rows: minmax(40px, auto);
-  gap: 10px;
-  max-height: calc(4 * 40px + 30px); /* limits to ~4 rows visually */
-  overflow-y: auto; /* allows scroll if more than 12 items */
-  width: 60%;
-  margin: 0 auto;
-  justify-items: center;
-}
-
-.positions-grid p {
-  background-color: #f0f4ff;
-  border-radius: 8px;
-  padding: 6px 10px;
-  width: 100%;
-  max-width: 150px;
-  text-align: center;
-  font-weight: 500;
-}
-
-
-.grid-container {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr); /* Creates 3 equal-width columns */
-  gap: 20px; /* Space between grid items */
-}
-
-.grid-item {
-  padding: 10px;
-  border: 1px solid #ccc;
-  text-align: center;
-}
-
-.custom-table th,
-.custom-table td {
-  border: 1px solid #ccc;
-  padding: 6px 8px;
-  text-align: left;
-  vertical-align: top;
-  word-wrap: break-word;
-}
-
-.custom-table th {
-  background-color: #222;
-  color: white;
-}
-
-.custom-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-  font-size: 14px;
-}
-
-/* Container that allows horizontal scrolling on small devices */
-.custom-table-container {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.custom-table thead th {
-  background-color: #222;
-  font-weight: bold;
-}
-
-.custom-table tr:nth-child(even) {
-  background-color: #fafafa;
-}
-
-/* Stronger separation between trades */
-.trade-separator td {
-  border-bottom: 3px solid #444;
-}
-
-.custom-table {
-  width: 80%;
-  border-collapse: collapse;
-  margin: 0 auto;
-}
-
-.clear-button {
-  position: relative;
-  width: 200px;
-  cursor: pointer;
-  font-family: sans-serif;
-  justify-content: space-between;
-  align-items: center;
-  border: 1px solid #aaa;
-  border-radius: 6px;
-  padding: 8px 12px;
-  margin: 10px auto;
-  background-color: white;
-  font-size: 15px;
-}
-
-
-/* Mobile-specific adjustments */
-@media (max-width: 600px) {
+  
+  .ifl-hero::before {
+    content: "";
+    position: absolute;
+    inset: -40% -10% auto -10%;
+    height: 60%;
+    background: linear-gradient(115deg, transparent 40%, rgba(245, 184, 48, 0.08) 48%, transparent 56%);
+    transform: translateX(-30%);
+    pointer-events: none;
+  }
+  
+  @media (prefers-reduced-motion: no-preference) {
+    .ifl-hero::before {
+      animation: floodlight-sweep 9s ease-in-out infinite;
+    }
+  }
+  
+  @keyframes floodlight-sweep {
+    0%, 100% { transform: translateX(-35%); }
+    50% { transform: translateX(35%); }
+  }
+  
+  .ifl-eyebrow {
+    position: relative;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--floodlight-dim);
+    margin: 0 0 0.75rem;
+  }
+  
+  .ifl-wordmark {
+    position: relative;
+    font-family: var(--font-display);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    font-size: clamp(2.2rem, 6vw, 4rem);
+    line-height: 0.95;
+    margin: 0;
+    color: var(--chalk);
+  }
+  
+  .ifl-wordmark span {
+    color: var(--floodlight);
+  }
+  
+  .ifl-tagline {
+    position: relative;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    color: var(--chalk-dim);
+    margin: 0.9rem 0 0;
+    letter-spacing: 0.01em;
+  }
+  
+  /* ── Controls ─────────────────────────────────────────────────────────── */
+  
+  .ifl-controls {
+    max-width: 720px;
+    margin: 0 auto 1.5rem;
+    padding: 0 1rem;
+  }
+  
+  .ifl-login-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .ifl-select-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    justify-content: center;
+    align-items: flex-start;
+    margin-top: 1.1rem;
+  }
+  
+  .ifl-welcome {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--chalk-dim);
+    margin: 0 0 0.75rem;
+  }
+  
+  .ifl-welcome strong {
+    color: var(--floodlight);
+    font-weight: 600;
+  }
+  
+  .ifl-loading-note {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--chalk-dim);
+    margin: 0 0 0.5rem;
+  }
+  
+  /* ── Buttons ──────────────────────────────────────────────────────────── */
+  
+  .clear-button {
+    position: relative;
+    width: auto;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.82rem;
+    letter-spacing: 0.02em;
+    border: 1px solid var(--turf-line);
+    border-radius: 999px;
+    padding: 9px 18px;
+    margin: 0;
+    background-color: transparent;
+    color: var(--chalk-dim);
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  
+  .clear-button:hover {
+    border-color: var(--flag);
+    color: var(--flag);
+  }
+  
+  .ifl-submit-btn {
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+    border: 1px solid var(--floodlight);
+    border-radius: 999px;
+    padding: 10px 22px;
+    background: var(--floodlight);
+    color: var(--pitch-deep);
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  
+  .ifl-submit-btn:hover {
+    background: #ffca4d;
+  }
+  
+  .ifl-submit-btn:active {
+    transform: translateY(1px);
+  }
+  
+  .ifl-text-input {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--turf-line);
+    background: var(--turf);
+    color: var(--chalk);
+    width: 230px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  
+  .ifl-text-input::placeholder {
+    color: var(--chalk-dim);
+    opacity: 0.6;
+  }
+  
+  .ifl-text-input:focus {
+    border-color: var(--floodlight-dim);
+  }
+  
+  .ifl-input-label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--chalk-dim);
+    display: block;
+    margin-bottom: 0.4rem;
+  }
+  
+  /* ── Section headers ──────────────────────────────────────────────────── */
+  
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--chalk);
+    font-size: 1.25rem;
+    margin: 2rem 0 0.75rem;
+  }
+  
+  /* ── Team nameplate (signature element) ──────────────────────────────── */
+  /* Team name in condensed athletic type with a glowing floodlight
+     underline, paired with the record rendered as a small illuminated
+     scoreboard chip. This is the one recurring, memorable device — every
+     other surface in the app stays quiet by comparison. */
+  
+  .ifl-nameplate {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.85rem;
+    margin: 2.5rem 0 1rem;
+  }
+  
+  .ifl-nameplate-name {
+    position: relative;
+    font-family: var(--font-display);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    font-size: 1.55rem;
+    color: var(--chalk);
+    padding-bottom: 6px;
+    border-bottom: 3px solid var(--floodlight);
+    text-shadow: 0 0 18px rgba(245, 184, 48, 0.25);
+  }
+  
+  .ifl-scoreboard-chip {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    color: var(--floodlight);
+    background: var(--turf);
+    border: 1px solid var(--floodlight-dim);
+    border-radius: 6px;
+    padding: 4px 10px;
+    box-shadow: inset 0 0 8px rgba(245, 184, 48, 0.12);
+  }
+  
+  .ifl-note {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--chalk-dim);
+    text-align: center;
+    margin: -0.25rem 0 0.75rem;
+  }
+  
+  /* ── Tables — the cap ledger ──────────────────────────────────────────── */
+  
+  .custom-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
   .custom-table {
-    font-size: 12px; /* smaller text */
+    width: 90%;
+    max-width: 900px;
+    border-collapse: collapse;
+    margin: 0.75rem auto;
+    font-size: 14px;
+    font-family: var(--font-body);
+    background: var(--turf);
+    border: 1px solid var(--turf-line);
+    border-radius: 10px;
+    overflow: hidden;
   }
-
+  
   .custom-table th,
   .custom-table td {
-    padding: 4px 6px; /* tighter padding */
+    border-bottom: 1px solid var(--turf-line);
+    border-right: none;
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+    word-wrap: break-word;
+    color: var(--chalk);
   }
-
-  h1 {
-    font-size: 20px;
+  
+  .custom-table thead th {
+    background-color: var(--pitch-deep);
+    color: var(--floodlight);
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--turf-line);
   }
-
-  h3 {
-    font-size: 16px;
+  
+  .custom-table tr:nth-child(even) {
+    background-color: var(--turf-2);
   }
-}
+  
+  .custom-table tbody tr:hover {
+    background-color: rgba(245, 184, 48, 0.06);
+  }
+  
+  /* Dollar figures and years read as ledger data — tabular mono. */
+  .custom-table td:nth-child(n+4) {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  
+  .custom-table strong {
+    color: var(--floodlight);
+  }
+  
+  .trade-separator td {
+    border-bottom: 3px solid var(--floodlight-dim);
+  }
+  
+  /* ── Positions grid ───────────────────────────────────────────────────── */
+  
+  .positions-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: minmax(40px, auto);
+    gap: 10px;
+    max-height: calc(4 * 40px + 30px);
+    overflow-y: auto;
+    width: 60%;
+    margin: 0 auto;
+    justify-items: center;
+  }
+  
+  .positions-grid p {
+    background-color: var(--turf);
+    border: 1px solid var(--turf-line);
+    border-radius: 8px;
+    padding: 6px 10px;
+    width: 100%;
+    max-width: 150px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--chalk);
+  }
+  
+  .grid-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  
+  .grid-item {
+    padding: 10px;
+    border: 1px solid var(--turf-line);
+    text-align: center;
+    color: var(--chalk);
+  }
+  
+  /* Native form controls (Cap Calculator, etc.) — themed globally so any
+     future control matches without one-off styling. */
+  select,
+  input[type="number"],
+  input[type="text"] {
+    font-family: var(--font-body);
+    background: var(--turf);
+    color: var(--chalk);
+    border: 1px solid var(--turf-line);
+    border-radius: 6px;
+    padding: 6px 10px;
+  }
+  
+  select:focus,
+  input[type="number"]:focus,
+  input[type="text"]:focus {
+    outline: none;
+    border-color: var(--floodlight-dim);
+  }
+  
+  select option {
+    background: var(--turf);
+    color: var(--chalk);
+  }
+  
+  /* Trades — each row is colored by which team it belongs to (assigned
+     consistently in JS via getTeamColor), not by alternating position or
+     the generic hover/zebra treatment, which carried no information here. */
+  .trades-table tbody tr:nth-child(even) {
+    background-color: inherit;
+  }
+  
+  .trades-table tbody tr:hover {
+    background-color: inherit;
+  }
+  
+  .trades-table .trade-team-cell {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  
+  .trades-table .trade-date-cell {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--chalk-dim);
+    white-space: nowrap;
+  }
+  
+  /* ── Mobile ───────────────────────────────────────────────────────────── */
+  
+  @media (max-width: 600px) {
+    .ifl-hero {
+      padding: 2.5rem 1rem 2rem;
+    }
+  
+    .custom-table {
+      font-size: 12px;
+      width: 96%;
+    }
+  
+    .custom-table th,
+    .custom-table td {
+      padding: 6px 8px;
+    }
+  
+    h1 {
+      font-size: 20px;
+    }
+  
+    h3 {
+      font-size: 1.05rem;
+    }
+  
+    .ifl-nameplate-name {
+      font-size: 1.25rem;
+    }
+  
+    .ifl-text-input {
+      width: 100%;
+    }
+  }

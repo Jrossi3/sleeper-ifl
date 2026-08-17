@@ -10,38 +10,23 @@ export default function TextInput({ onSubmitValue }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ textAlign: "center", marginTop: "2rem" }}>
-      <div>Sleeper Username:
-      <input
-        type="text"
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        placeholder="Sleeper Username"
-        style={{
-          padding: "10px",
-          fontSize: "16px",
-          borderRadius: "8px",
-          border: "1px solid #ccc",
-          width: "250px",
-          marginRight: "10px",
-        }}
-      />
-      <button
-        type="submit"
-        style={{
-          padding: "10px 20px",
-          fontSize: "16px",
-          borderRadius: "8px",
-          border: "none",
-          backgroundColor: "#007BFF",
-          color: "white",
-          cursor: "pointer",
-        }}
-      >
-        Submit
-      </button>
+    <form onSubmit={handleSubmit}>
+      <label className="ifl-input-label" htmlFor="ifl-username">
+        Sleeper Username
+      </label>
+      <div className="ifl-login-row">
+        <input
+          id="ifl-username"
+          type="text"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          placeholder="Sleeper Username"
+          className="ifl-text-input"
+        />
+        <button type="submit" className="ifl-submit-btn">
+          Enter the League
+        </button>
       </div>
-      
     </form>
   );
 }

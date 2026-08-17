@@ -60,12 +60,15 @@ export default function CapCalculator({ contractsByTeam, currentYear }) {
   const thisYearFreed = contract ? netFor(currentYear) : 0;
 
   const btnStyle = (active) => ({
-    padding: "6px 14px",
+    padding: "8px 16px",
     marginRight: "8px",
-    borderRadius: "6px",
-    border: "1px solid #444",
-    background: active ? "#444" : "#fff",
-    color: active ? "#fff" : "#333",
+    borderRadius: "999px",
+    border: active ? "1px solid var(--floodlight)" : "1px solid var(--turf-line)",
+    background: active ? "var(--floodlight)" : "transparent",
+    color: active ? "var(--pitch-deep)" : "var(--chalk-dim)",
+    fontFamily: "var(--font-body)",
+    fontWeight: 600,
+    fontSize: "0.85rem",
     cursor: "pointer",
   });
 
@@ -124,7 +127,7 @@ export default function CapCalculator({ contractsByTeam, currentYear }) {
               </tr>
             </tbody>
           </table>
-          <p style={{ fontSize: "0.85em", color: "#888" }}>
+          <p style={{ fontSize: "0.85em", color: "var(--chalk-dim)" }}>
             18% compounded annually, per Constitution 4.1c
           </p>
         </div>
@@ -168,7 +171,7 @@ export default function CapCalculator({ contractsByTeam, currentYear }) {
                 </select>
               )}
               {teamContracts && teamContracts.players.length === 0 && (
-                <p style={{ color: "#888", fontSize: "0.85em" }}>
+                <p style={{ color: "var(--chalk-dim)", fontSize: "0.85em" }}>
                   No player contracts were found for this team — check the browser console for a
                   parsing warning, or verify the sheet's column headers.
                 </p>

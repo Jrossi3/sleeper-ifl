@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import "./App.css";
 import Dropdown from "./components/dropdown";
 import TextInput from "./components/TextInput";
@@ -9,21 +9,42 @@ import CapCalculator from "./components/CapCalculator";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function useMediaQuery(query) {
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    const handler = (e) => setMatches(e.matches);
-    mq.addListener(handler);
-    return () => mq.removeListener(handler);
-  }, [query]);
-  return matches;
-}
-
 const formatDate = (ms) =>
   new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 const getKeyByValue = (obj, val) => Object.keys(obj).find((k) => obj[k] === val);
+
+// A fixed palette so every team gets its own consistent color wherever it
+// shows up in a trade — same team, same color, every time, rather than an
+// alternating scheme that only encoded row position. Kept out of
+// floodlight-gold territory so it doesn't compete with that accent's own
+// meaning (selection/highlight) elsewhere in the UI.
+const TEAM_COLOR_PALETTE = [
+  "#E8A33D", // amber
+  "#5FB4D9", // sky blue
+  "#E0687A", // rose
+  "#7FC77F", // grass green
+  "#B98CDE", // lavender
+  "#E8896B", // terracotta
+  "#6FCDC0", // teal
+  "#D9C15B", // mustard
+  "#8FA6E0", // periwinkle
+  "#D98FC4", // magenta
+];
+
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Deterministic: the same roster/team id always hashes to the same color.
+function getTeamColor(id) {
+  const str = String(id ?? "");
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  return TEAM_COLOR_PALETTE[Math.abs(hash) % TEAM_COLOR_PALETTE.length];
+}
 
 // The cap/contract system (Cap Calculator, contract columns on Rosters,
 // dead-cap offsets) is a homebrew IFL rule set, not something Sleeper
@@ -112,14 +133,25 @@ export default function App() {
   const [dropdownWeeks, setDropdownWeeks] = useState([]);
   const weeks = 17;
 
-  const isMobile = useMediaQuery("(max-width: 600px)");
-
   // ── Derived options ───────────────────────────────────────────────────────────
 
   const dropdownYearOptions = availableYears.map((y) => ({ label: y }));
   const dropdownWeekOptions = dropdownWeeks.map((w) => ({ label: `Week ${w}`, value: w }));
   // availableYears is sorted descending, so index 0 is always the current/most recent season.
   const isCurrentSeason = year === availableYears[0];
+
+  // Assign colors by each team's stable position among this league's
+  // roster ids, not a hash — guarantees no two teams collide as long as
+  // there are no more teams than colors (10 of each, matching this
+  // league's size), while still being deterministic across renders.
+  const teamColorMap = useMemo(() => {
+    const ids = Object.keys(teams).sort((a, b) => Number(a) - Number(b));
+    const map = {};
+    ids.forEach((id, i) => {
+      map[id] = TEAM_COLOR_PALETTE[i % TEAM_COLOR_PALETTE.length];
+    });
+    return map;
+  }, [teams]);
 
   const dropdownTransactionOptions = [
     { label: "Trades" },
@@ -459,52 +491,63 @@ export default function App() {
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
-  const divStyle = {
-    display: isMobile ? "" : "flex",
-    gap: "10px",
-    justifyContent: "center",
-    margin: isMobile ? "1rem" : "",
-  };
-
   return (
     <div>
       <main className="p-4">
-        <h1 className="text-2xl font-bold mb-4" style={{ textAlign: "center" }}>
-          The International Football League
-        </h1>
-
-        <div style={{ textAlign: "center", marginTop: "2rem" }}>
-          <TextInput onSubmitValue={handleInputSubmit} />
-          <button className="clear-button" onClick={clearButton}>Logout & Clear Data</button>
+        <div className="ifl-hero">
+          <p className="ifl-eyebrow">Fantasy Football · Powered by Sleeper</p>
+          <h1 className="ifl-wordmark">
+            {leagueName ? (
+              leagueName
+            ) : (
+              <>League <span>Command Center</span></>
+            )}
+          </h1>
+          <p className="ifl-tagline">
+            {leagueName === IFL_LEAGUE_NAME
+              ? "Ten franchises. One salary cap. Every contract, every trade, every season."
+              : "Rosters, trades, matchups, and draft history — all in one place."}
+          </p>
         </div>
 
-        {user.length > 0 && (
-          <div style={divStyle}>
-            <p>Welcome {user}</p>
-            {playersLoading && (
-              <p style={{ color: "#888", fontSize: "0.85em" }}>Loading player database…</p>
-            )}
-            <Dropdown placeholder="Select a League" options={dropdownLeagueOptions} onSelect={handleDropdownLeague} resetTrigger={user} />
+        <div className="ifl-controls">
+          <TextInput onSubmitValue={handleInputSubmit} />
+          {user.length > 0 && (
+            <div style={{ textAlign: "center", marginTop: "0.85rem" }}>
+              <button className="clear-button" onClick={clearButton}>Logout &amp; clear data</button>
+            </div>
+          )}
 
-            {leagueName && (
-              <>
-                {availableYears.length > 1 && (
-                  <Dropdown placeholder="Select a year" options={dropdownYearOptions} onSelect={(o) => setYear(o.label)} value={year} />
+          {user.length > 0 && (
+            <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
+              <p className="ifl-welcome">Welcome, <strong>{user}</strong></p>
+              {playersLoading && (
+                <p className="ifl-loading-note">Loading player database…</p>
+              )}
+              <div className="ifl-select-row">
+                <Dropdown placeholder="Select a League" options={dropdownLeagueOptions} onSelect={handleDropdownLeague} resetTrigger={user} />
+
+                {leagueName && (
+                  <>
+                    {availableYears.length > 1 && (
+                      <Dropdown placeholder="Select a year" options={dropdownYearOptions} onSelect={(o) => setYear(o.label)} value={year} />
+                    )}
+                    <Dropdown placeholder="Select a team" options={dropdownTeamOptions} onSelect={(o) => setNewTeam(o.label)} resetTrigger={leagueId} />
+                    <Dropdown placeholder="Select a view" options={dropdownTransactionOptions} onSelect={(o) => setTransactions(o.label)} resetTrigger={`${user}|${leagueId}|${year}`} />
+                    {transaction === "Matchups" && (
+                      <Dropdown
+                        placeholder="Select a week"
+                        options={dropdownWeekOptions}
+                        onSelect={(o) => { setActiveWeek(o.value); setWeekChecker(true); }}
+                        resetTrigger={year}
+                      />
+                    )}
+                  </>
                 )}
-                <Dropdown placeholder="Select a team" options={dropdownTeamOptions} onSelect={(o) => setNewTeam(o.label)} resetTrigger={leagueId} />
-                <Dropdown placeholder="Select a view" options={dropdownTransactionOptions} onSelect={(o) => setTransactions(o.label)} resetTrigger={`${user}|${leagueId}|${year}`} />
-                {transaction === "Matchups" && (
-                  <Dropdown
-                    placeholder="Select a week"
-                    options={dropdownWeekOptions}
-                    onSelect={(o) => { setActiveWeek(o.value); setWeekChecker(true); }}
-                    resetTrigger={year}
-                  />
-                )}
-              </>
-            )}
-          </div>
-        )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {loading ? (
           <p style={{ textAlign: "center" }}>Loading...</p>
@@ -521,12 +564,12 @@ export default function App() {
                     week.length === 0 ? null : (
                       <div key={weekIdx} className="my-4">
                         <h3 style={{ textAlign: "center" }}>Week {weekIdx + 1} Trades</h3>
-                        <table className="custom-table">
+                        <table className="custom-table trades-table">
                           <thead>
                             <tr>
                               <th>Date</th><th>Team</th><th>Players</th>
                               {leagueType === "Dynasty" && <th>Draft Picks</th>}
-                              {leagueName === "The International Football League" && year <= "2025" && <th>Notes</th>}
+                              {leagueName === IFL_LEAGUE_NAME && year <= "2025" && <th>Notes</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -545,23 +588,35 @@ export default function App() {
                               });
 
                               const rows = teamIds.flatMap((teamId, i) => [
-                                ...playerGroups[i].map((pid) => ({ teamId, player: players[pid]?.full_name ?? pid, pick: null })),
-                                ...draftGroups[i].map((pick) => ({ teamId, player: null, pick: `${pick.season} Round ${pick.round} via ${teams[pick.roster_id]}` })),
+                                ...playerGroups[i].map((pid) => ({ teamId, teamIdx: i, player: players[pid]?.full_name ?? pid, pick: null })),
+                                ...draftGroups[i].map((pick) => ({ teamId, teamIdx: i, player: null, pick: `${pick.season} Round ${pick.round} via ${teams[pick.roster_id]}` })),
                               ]);
 
                               return (
                                 <React.Fragment key={tradeIdx}>
-                                  {rows.map((row, rowIdx) => (
-                                    <tr key={rowIdx} style={rowIdx === rows.length - 1 ? { borderBottom: "5px solid #444" } : {}}>
-                                      {rowIdx === 0 && <td rowSpan={rows.length}>{formatDate(trade.created)}</td>}
-                                      <td>{teams[row.teamId]}</td>
-                                      <td>{row.player}</td>
-                                      {leagueType === "Dynasty" && <td>{row.pick}</td>}
-                                      {rowIdx === 0 && leagueName === "The International Football League" && year <= "2025" && (
-                                        <td rowSpan={rows.length}>{trade.notes || "No Notes"}</td>
-                                      )}
-                                    </tr>
-                                  ))}
+                                  {rows.map((row, rowIdx) => {
+                                    const color = teamColorMap[row.teamId] || getTeamColor(row.teamId);
+                                    return (
+                                      <tr
+                                        key={rowIdx}
+                                        style={{
+                                          backgroundColor: hexToRgba(color, 0.1),
+                                          borderLeft: `4px solid ${color}`,
+                                          ...(rowIdx === rows.length - 1
+                                            ? { borderBottom: "3px solid var(--floodlight-dim)" }
+                                            : {}),
+                                        }}
+                                      >
+                                        {rowIdx === 0 && <td rowSpan={rows.length} className="trade-date-cell">{formatDate(trade.created)}</td>}
+                                        <td className="trade-team-cell" style={{ color }}>{teams[row.teamId]}</td>
+                                        <td>{row.player}</td>
+                                        {leagueType === "Dynasty" && <td>{row.pick}</td>}
+                                        {rowIdx === 0 && leagueName === IFL_LEAGUE_NAME && year <= "2025" && (
+                                          <td rowSpan={rows.length}>{trade.notes || "No Notes"}</td>
+                                        )}
+                                      </tr>
+                                    );
+                                  })}
                                 </React.Fragment>
                               );
                             })}
@@ -702,9 +757,12 @@ export default function App() {
 
                     return (
                       <div key={rosterIdx} className="my-4">
-                        <h3 style={{ textAlign: "center" }}>{roster.team_name} - Record: {roster.wins}-{roster.losses}</h3>
+                        <div className="ifl-nameplate">
+                          <span className="ifl-nameplate-name">{roster.team_name}</span>
+                          <span className="ifl-scoreboard-chip">{roster.wins}-{roster.losses}</span>
+                        </div>
                         {useSheetAsRoster && (
-                          <p style={{ fontSize: "0.8em", color: "#888" }}>
+                          <p className="ifl-note">
                             Roster shown from the contract sheet — Sleeper has no synced roster for this team.
                           </p>
                         )}
@@ -786,7 +844,7 @@ export default function App() {
                           </tbody>
                         </table>
                         {teamContracts && (
-                          <p style={{ textAlign: "center", fontSize: "0.8em", color: "#888" }}>
+                          <p className="ifl-note">
                             * cap hit adjusted by a dead-cap / trade offset — hover for details
                           </p>
                         )}
@@ -818,7 +876,7 @@ export default function App() {
                     <div key={matchupIdx} className="my-4">
                       <h3 style={{ textAlign: "center", marginBottom: "10px" }}>
                         Week {activeWeek} —{" "}
-                        <span style={{ color: t1Won ? "green" : t2Won ? "red" : "gray" }}>
+                        <span style={{ color: t1Won ? "var(--floodlight)" : t2Won ? "var(--flag)" : "var(--chalk-dim)" }}>
                           {t1Won ? `${team1Name} Wins` : t2Won ? `${team2Name} Wins` : "Tie"}
                         </span>
                       </h3>
@@ -833,12 +891,12 @@ export default function App() {
                             const p1d = players[p1], p2d = players[p2];
                             return (
                               <tr key={i}>
-                                <td style={{ fontWeight: t1starters.has(p1) ? "bold" : "normal", backgroundColor: t1starters.has(p1) ? "#e6ffe6" : "" }}>
-                                  {p1d && <>{p1d.first_name} {p1d.last_name} <span style={{ color: "#888" }}>{p1d.position}</span></>}
+                                <td style={{ fontWeight: t1starters.has(p1) ? "bold" : "normal", backgroundColor: t1starters.has(p1) ? "rgba(245, 184, 48, 0.1)" : "" }}>
+                                  {p1d && <>{p1d.first_name} {p1d.last_name} <span style={{ color: "var(--chalk-dim)" }}>{p1d.position}</span></>}
                                 </td>
                                 <td>{p1 && matchup.team1.players_points?.[p1]?.toFixed(2)}</td>
-                                <td style={{ fontWeight: t2starters.has(p2) ? "bold" : "normal", backgroundColor: t2starters.has(p2) ? "#e6ffe6" : "" }}>
-                                  {p2d && <>{p2d.first_name} {p2d.last_name} <span style={{ color: "#888" }}>{p2d.position}</span></>}
+                                <td style={{ fontWeight: t2starters.has(p2) ? "bold" : "normal", backgroundColor: t2starters.has(p2) ? "rgba(245, 184, 48, 0.1)" : "" }}>
+                                  {p2d && <>{p2d.first_name} {p2d.last_name} <span style={{ color: "var(--chalk-dim)" }}>{p2d.position}</span></>}
                                 </td>
                                 <td>{p2 && matchup.team2.players_points?.[p2]?.toFixed(2)}</td>
                               </tr>
