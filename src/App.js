@@ -6,6 +6,7 @@ import GridDisplay from "./components/GridDisplays";
 import { fetchTeamContracts, findContract } from "./utils/contractSheet";
 import { loadPlayers } from "./utils/playerCache";
 import CapCalculator from "./components/CapCalculator";
+import HallOfChampions from "./components/HallOfChampions";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export default function App() {
   const [matchups, setMatchups] = useState([]);
   const [contractsByTeam, setContractsByTeam] = useState({});
   const [contractsLoading, setContractsLoading] = useState(false);
+  const [playerQuery, setPlayerQuery] = useState("");
 
   // Fetch the Sleeper player database once (cached in localStorage — see
   // src/utils/playerCache.js) instead of bundling ~19MB into the app.
@@ -140,6 +142,32 @@ export default function App() {
   // availableYears is sorted descending, so index 0 is always the current/most recent season.
   const isCurrentSeason = year === availableYears[0];
 
+  // "Who has this player" — searches every roster currently loaded for this
+  // league (active roster, taxi, and IR), not just the current team filter.
+  const playerSearchResults = useMemo(() => {
+    const q = playerQuery.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return Object.entries(players)
+      .filter(([, p]) => p?.full_name && p.full_name.toLowerCase().includes(q))
+      .slice(0, 25)
+      .map(([pid, p]) => {
+        const owner = rosters.find(
+          (r) =>
+            (r.players || []).includes(pid) ||
+            (r.taxi || []).includes(pid) ||
+            (r.reserve || []).includes(pid)
+        );
+        let status = "Not currently rostered in this league";
+        if (owner) {
+          const onTaxi = (owner.taxi || []).includes(pid);
+          const onIR = (owner.reserve || []).includes(pid);
+          const teamName = teams[owner.roster_id] || "Unknown Team";
+          status = teamName + (onTaxi ? " (Taxi)" : onIR ? " (IR)" : "");
+        }
+        return { pid, name: p.full_name, position: p.position, status, rosterId: owner?.roster_id };
+      });
+  }, [playerQuery, players, rosters, teams]);
+
   // Assign colors by each team's stable position among this league's
   // roster ids, not a hash — guarantees no two teams collide as long as
   // there are no more teams than colors (10 of each, matching this
@@ -154,10 +182,13 @@ export default function App() {
   }, [teams]);
 
   const dropdownTransactionOptions = [
+    { label: "Standings" },
     { label: "Trades" },
     { label: "Free Agent Transactions" },
     { label: "Rosters and Records" },
     { label: "Matchups" },
+    { label: "Player Search" },
+    { label: "Hall of Champions" },
     ...(leagueName === IFL_LEAGUE_NAME && isCurrentSeason ? [{ label: "Cap Calculator" }] : []),
     ...(leagueType === "Dynasty" ? [{ label: "Draft Picks" }] : []),
   ];
@@ -374,6 +405,9 @@ export default function App() {
           taxi: r.taxi,
           wins: r.settings.wins,
           losses: r.settings.losses,
+          ties: r.settings.ties || 0,
+          pointsFor: (r.settings.fpts || 0) + (r.settings.fpts_decimal || 0) / 100,
+          pointsAgainst: (r.settings.fpts_against || 0) + (r.settings.fpts_against_decimal || 0) / 100,
         }));
 
         const teamsMap = {};
@@ -557,6 +591,96 @@ export default function App() {
             <GridDisplay items={positions} />
 
             <div>
+              {/* ── Standings ── */}
+              {transaction === "Standings" && (
+                <div className="my-4">
+                  <h3 style={{ textAlign: "center" }}>Standings</h3>
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Team</th>
+                        <th>W</th>
+                        <th>L</th>
+                        {rosters.some((r) => r.ties > 0) && <th>T</th>}
+                        <th>PF</th>
+                        <th>PA</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...rosters]
+                        .sort((a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor)
+                        .map((r, i) => (
+                          <tr key={r.roster_id}>
+                            <td>{i + 1}</td>
+                            <td style={{ fontWeight: 600, color: teamColorMap[r.roster_id] }}>
+                              {r.team_name || teams[r.roster_id]}
+                            </td>
+                            <td>{r.wins}</td>
+                            <td>{r.losses}</td>
+                            {rosters.some((x) => x.ties > 0) && <td>{r.ties}</td>}
+                            <td>{r.pointsFor.toFixed(2)}</td>
+                            <td>{r.pointsAgainst.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                  <p className="ifl-note">Sorted by record, then points for.</p>
+                </div>
+              )}
+
+              {/* ── Player Search ── */}
+              {transaction === "Player Search" && (
+                <div className="my-4" style={{ maxWidth: 520, margin: "0 auto" }}>
+                  <h3 style={{ textAlign: "center" }}>Who Has This Player?</h3>
+                  <label className="ifl-input-label" htmlFor="ifl-player-search">
+                    Search every roster in this league
+                  </label>
+                  <input
+                    id="ifl-player-search"
+                    type="text"
+                    className="ifl-text-input"
+                    style={{ width: "100%" }}
+                    placeholder="e.g. Rashee Rice"
+                    value={playerQuery}
+                    onChange={(e) => setPlayerQuery(e.target.value)}
+                  />
+                  {playerQuery.trim().length >= 2 && (
+                    <table className="custom-table" style={{ marginTop: "1rem" }}>
+                      <thead>
+                        <tr>
+                          <th>Player</th>
+                          <th>Pos</th>
+                          <th>Team</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {playerSearchResults.length === 0 ? (
+                          <tr>
+                            <td colSpan={3}>No matches.</td>
+                          </tr>
+                        ) : (
+                          playerSearchResults.map((r) => (
+                            <tr key={r.pid}>
+                              <td>{r.name}</td>
+                              <td>{r.position}</td>
+                              <td style={{ color: r.rosterId ? teamColorMap[r.rosterId] : "var(--chalk-dim)" }}>
+                                {r.status}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {/* ── Hall of Champions ── */}
+              {transaction === "Hall of Champions" && (
+                <HallOfChampions idUser={idUser} leagueName={leagueName} year={year} players={players} />
+              )}
+
               {/* ── Trades ── */}
               {transaction === "Trades" && (
                 tradeCount > 0
@@ -902,7 +1026,7 @@ export default function App() {
                               </tr>
                             );
                           })}
-                          <tr style={{ fontWeight: "bold", borderTop: "2px solid #444", backgroundColor: "#f8f8f8" }}>
+                          <tr style={{ fontWeight: "bold", borderTop: "2px solid var(--floodlight-dim)", backgroundColor: "var(--turf-2)" }}>
                             <td>Total</td><td>{t1pts.toFixed(2)}</td>
                             <td>Total</td><td>{t2pts.toFixed(2)}</td>
                           </tr>
