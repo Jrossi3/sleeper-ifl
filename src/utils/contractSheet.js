@@ -53,8 +53,8 @@ const SPREADSHEET_ID = "13v9XhA8LLc0-gaqNS4Xf3JDIeRHqSSujvorwXJhcHEQ";
 export const TEAM_SHEET_GIDS = {
   "Hiroshima Kamikazes": "1886957383",
   "Belfast Car Bombers": "177213629",
-  "Chamonix Alpines": "378134153",
-  "Shanghai Warrior Monks": "1717026914",
+  "Cuzco Incas": "378134153",
+  "Beijing Tank Men": "1717026914",
   "Glasgow Highlanders": "1666016011",
   "Galway Potato Farmers": "155272364",
   "Montauk Bluefins": "152517402",
