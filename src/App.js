@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import "./App.css";
 import Dropdown from "./components/dropdown";
 import TextInput from "./components/TextInput";
@@ -9,6 +9,34 @@ import CapCalculator from "./components/CapCalculator";
 import HallOfChampions from "./components/HallOfChampions";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Persists just enough state (who's logged in, which league/year/view they
+// were on) so a page refresh picks back up where the user left off instead
+// of dropping them back at the username screen. Everything else (rosters,
+// trades, matchups, etc.) is re-fetched from that restored state via the
+// app's existing effects — this only needs to remember the "address," not
+// the data itself.
+const SESSION_KEY = "ifl_session_v1";
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSession(partial) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(partial));
+  } catch {
+    // Best-effort — a failed write here just means the next reload starts
+    // fresh instead of restoring, never a broken app.
+  }
+}
+
+const savedSession = loadSession();
 
 const formatDate = (ms) =>
   new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -116,24 +144,34 @@ export default function App() {
     };
   }, []);
 
-  const [user, setUser] = useState("");
-  const [idUser, setUserId] = useState("");
-  const [leagueId, setLeagueId] = useState("");
-  const [leagueName, setLeagueName] = useState("");
-  const [leagueType, setLeagueType] = useState("");
-  const [positions, setLeaguePositions] = useState([]);
+  const [user, setUser] = useState(savedSession.user || "");
+  const [idUser, setUserId] = useState(savedSession.idUser || "");
+  const [leagueId, setLeagueId] = useState(savedSession.leagueId || "");
+  const [leagueName, setLeagueName] = useState(savedSession.leagueName || "");
+  const [leagueType, setLeagueType] = useState(savedSession.leagueType || "");
+  const [positions, setLeaguePositions] = useState(savedSession.positions || []);
   const [dropdownLeagueOptions, setLeagueDropdown] = useState([]);
 
-  const [year, setYear] = useState("2026");
-  const [availableYears, setAvailableYears] = useState(["2026"]);
-  const [newTeam, setNewTeam] = useState("All Teams");
-  const [transaction, setTransactions] = useState("Trades");
+  const [year, setYear] = useState(savedSession.year || "2026");
+  const [availableYears, setAvailableYears] = useState(savedSession.availableYears || ["2026"]);
+  const [newTeam, setNewTeam] = useState(savedSession.newTeam || "All Teams");
+  const [transaction, setTransactions] = useState(savedSession.transaction || "Trades");
   const [tradeCount, setTradeCount] = useState(1);
 
   const [activeWeek, setActiveWeek] = useState(0);
   const [weekChecker, setWeekChecker] = useState(false);
   const [dropdownWeeks, setDropdownWeeks] = useState([]);
   const weeks = 17;
+
+  // ── Session persistence ─────────────────────────────────────────────────────────
+  // Keep localStorage in sync so a page refresh restores this exact spot —
+  // who's logged in, which league/year/view — instead of the login screen.
+  useEffect(() => {
+    saveSession({
+      user, idUser, leagueId, leagueName, leagueType, positions,
+      year, availableYears, newTeam, transaction,
+    });
+  }, [user, idUser, leagueId, leagueName, leagueType, positions, year, availableYears, newTeam, transaction]);
 
   // ── Derived options ───────────────────────────────────────────────────────────
 
@@ -201,6 +239,8 @@ export default function App() {
     setUserId(""); 
     setLeagueId(""); 
     setLeagueName("");
+    setLeagueType("");
+    setLeaguePositions([]);
     setLeagueDropdown([]); 
     setDropdownTeams([]); 
     setTeams({});
@@ -212,6 +252,11 @@ export default function App() {
     setDynastyPicks([]); 
     setActiveWeek(0); 
     setWeekChecker(false);
+    setYear("2026");
+    setAvailableYears(["2026"]);
+    setNewTeam("All Teams");
+    setTransactions("Trades");
+    localStorage.removeItem(SESSION_KEY);
     alert("User data cleared.");
   };
 
@@ -290,13 +335,23 @@ export default function App() {
     fetchLeagues();
   }, [year, idUser]);
 
-  // Reset team state when league changes
+  // Reset team state when the underlying leagueId changes — this fires for
+  // both an actual league switch AND a year switch within the same league
+  // (each season is its own leagueId). Only reset the active VIEW on a true
+  // league switch; a year switch should keep whatever view the user was on
+  // and just let its data refresh for the new year.
+  const prevLeagueNameRef = useRef(null);
   useEffect(() => {
     if (!leagueId) return;
     setKey([]); setTeams({}); setDropdownTeams([]); setTrades([]);
     setFreeAgents([]); setRosters([]); setNewTeam(""); setDynastyPicks([]);
     setContractsByTeam({});
-    setTransactions("Trades"); // always fall back to the default view on a league switch
+    const isActualLeagueSwitch =
+      prevLeagueNameRef.current !== null && prevLeagueNameRef.current !== leagueName;
+    if (isActualLeagueSwitch) {
+      setTransactions("Trades");
+    }
+    prevLeagueNameRef.current = leagueName;
   }, [leagueId]);
 
   // Belt-and-suspenders: Cap Calculator is only ever valid for the current
@@ -567,7 +622,7 @@ export default function App() {
                       <Dropdown placeholder="Select a year" options={dropdownYearOptions} onSelect={(o) => setYear(o.label)} value={year} />
                     )}
                     <Dropdown placeholder="Select a team" options={dropdownTeamOptions} onSelect={(o) => setNewTeam(o.label)} resetTrigger={leagueId} />
-                    <Dropdown placeholder="Select a view" options={dropdownTransactionOptions} onSelect={(o) => setTransactions(o.label)} resetTrigger={`${user}|${leagueId}|${year}`} />
+                    <Dropdown placeholder="Select a view" options={dropdownTransactionOptions} onSelect={(o) => setTransactions(o.label)} resetTrigger={`${user}|${leagueName}`} />
                     {transaction === "Matchups" && (
                       <Dropdown
                         placeholder="Select a week"
