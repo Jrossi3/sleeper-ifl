@@ -17,8 +17,8 @@
 //   text directly above them in this row (the "2026/2027/…" labels live
 //   in a separate summary box a couple of rows above the player table, at
 //   a different column offset — not usable for locating these columns).
-//   The DEAD CAP section below the roster reuses the same
-//   column layout, with the label in the POS
+//   The DEAD CAP / PLUS CAP section below the roster reuses the same
+//   column layout, with the label ("PLUS CAP"/"DEAD CAP") in the POS
 //   column and the player's name in the Player column.
 //
 // If a tab's layout differs from this, adjust FIRST_CONTRACT_YEAR /
@@ -116,6 +116,21 @@ const normalize = (name = "") =>
     .trim();
 
 const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "v"]);
+
+// Team defenses are listed inconsistently ("Rams", "Rams DEF", "LA Rams",
+// "Los Angeles Rams D/ST") while Sleeper calls them "Los Angeles Rams".
+const NFL_NICKNAMES = new Set([
+  "cardinals","falcons","ravens","bills","panthers","bears","bengals","browns","cowboys","broncos",
+  "lions","packers","texans","colts","jaguars","chiefs","raiders","chargers","rams","dolphins",
+  "vikings","patriots","saints","giants","jets","eagles","steelers","49ers","niners","seahawks",
+  "buccaneers","bucs","titans","commanders","washington",
+]);
+const DEF_WORDS = /\b(def|defense|dst|d st|d\/st|special teams|st)\b/g;
+const defenseKey = (name) => {
+  const cleaned = normalize(name.replace(/\//g, " ")).replace(DEF_WORDS, " ").replace(/\s+/g, " ").trim();
+  const last = cleaned.split(" ").pop();
+  return NFL_NICKNAMES.has(last) ? last : null;
+};
 const stripSuffix = (parts) =>
   parts.length > 1 && SUFFIXES.has(parts[parts.length - 1]) ? parts.slice(0, -1) : parts;
 
@@ -124,6 +139,9 @@ function namesMatch(a, b) {
   const nb = normalize(b);
   if (!na || !nb) return false;
   if (na === nb) return true;
+  const da = defenseKey(a);
+  const db = defenseKey(b);
+  if (da && db) return da === db;
   const aParts = stripSuffix(na.split(" "));
   const bParts = stripSuffix(nb.split(" "));
   const aLast = aParts[aParts.length - 1];
@@ -144,6 +162,20 @@ export function findContract(contractPlayers, sleeperFullName) {
       (p) => namesMatch(p.name, sleeperFullName)
     ) || null
   );
+}
+
+export function findDeadCapEntry(deadCap, fullName) {
+  if (!deadCap || !fullName) return null;
+  // A player can have more than one dead-cap row; combine them by year.
+  const matches = deadCap.filter((d) => namesMatch(d.name, fullName));
+  if (!matches.length) return null;
+  const byYear = {};
+  matches.forEach((m) =>
+    Object.entries(m.byYear).forEach(([y, v]) => {
+      byYear[y] = (byYear[y] || 0) + v;
+    })
+  );
+  return { name: matches[0].name, byYear };
 }
 
 // Google's CSV export can render currency-formatted cells as "$104" and
@@ -262,6 +294,7 @@ function parsePlayersFromHeader(rows, headerIdx, upper, years) {
       draftedYear: draftedIdx !== -1 ? extractYear(r[draftedIdx]) || (r[draftedIdx] || "").trim() : "",
       draftPrice: priceIdx !== -1 ? (isNaN(toNumber(r[priceIdx])) ? 0 : toNumber(r[priceIdx])) : 0,
       capByYear,
+      rawRow: r.slice(0, 20),
       offsetByYear: {},
     });
   }
@@ -307,6 +340,7 @@ function parseTeamCsv(rows) {
 
   const { players, nextRowIdx, nameIdx, priceIdx } = result;
   let i = nextRowIdx;
+  const deadCap = [];
 
   if (players.length === 0) {
     console.warn(
@@ -324,8 +358,23 @@ function parseTeamCsv(rows) {
     const name = (r[nameIdx] || r[1] || "").trim();
     if (!name) continue;
     const player = players.find((p) => namesMatch(name, p.name));
-    if (!player) continue;
     const valueStart = priceIdx !== -1 ? findValueStart(r, priceIdx) : -1;
+    if (!player) {
+      // Not on the active roster: a player who was cut/traded. Keep it as
+      // a dead-cap entry so dropped players can be priced from it.
+      if (valueStart === -1 || /^(dead cap|plus cap|pre ?season|old contracts)/i.test(name)) continue;
+      const byYear = {};
+      let any = false;
+      years.forEach((y, k) => {
+        const v = toNumber(r[valueStart + k]);
+        if (!isNaN(v) && v !== 0) {
+          byYear[y] = v;
+          any = true;
+        }
+      });
+      if (any) deadCap.push({ name, byYear });
+      continue;
+    }
     if (valueStart === -1) continue;
     years.forEach((y, k) => {
       const v = toNumber(r[valueStart + k]);
@@ -365,7 +414,7 @@ function parseTeamCsv(rows) {
     };
   });
 
-  return { players, years: displayYears, budgetByYear };
+  return { players, years: displayYears, budgetByYear, deadCap };
 }
 
 // ── Public API ───────────────────────────────────────────────────────────
@@ -375,43 +424,72 @@ const normalizeTeamName = (name = "") =>
 
 function findGidForTeam(teamName) {
   if (TEAM_SHEET_GIDS[teamName]) return TEAM_SHEET_GIDS[teamName];
-  // Fall back to a case/whitespace-insensitive match — Sleeper's team_name
-  // and this map's keys are maintained separately and can drift slightly
-  // (extra space, different capitalization) without actually being a
-  // different team.
+  // Case/whitespace/"The " insensitive match against the known map.
   const target = normalizeTeamName(teamName);
   const match = Object.keys(TEAM_SHEET_GIDS).find((k) => normalizeTeamName(k) === target);
   return match ? TEAM_SHEET_GIDS[match] : null;
 }
 
+const gvizUrl = (param) =>
+  `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&${param}`;
+
+// For teams without a hardcoded gid (new/renamed franchises), look the tab
+// up by NAME. Google silently returns the FIRST tab when a sheet name
+// doesn't exist, so the response is compared against a deliberately bogus
+// sheet name's response and rejected if identical.
+let defaultTabText = null;
+async function fetchTabByName(teamName) {
+  if (defaultTabText == null) {
+    try {
+      defaultTabText = await (await fetch(gvizUrl("sheet=__no_such_tab__"))).text();
+    } catch (e) {
+      defaultTabText = "";
+    }
+  }
+  const variants = [...new Set([teamName, teamName.replace(/^the\s+/i, ""), `The ${teamName.replace(/^the\s+/i, "")}`])];
+  for (const v of variants) {
+    try {
+      const res = await fetch(gvizUrl(`sheet=${encodeURIComponent(v)}`));
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (text && text !== defaultTabText) return text;
+    } catch (e) {
+      /* try next variant */
+    }
+  }
+  return null;
+}
+
 export async function fetchTeamContracts(teamName) {
   const gid = findGidForTeam(teamName);
-  if (!gid) {
-    console.warn(
-      `contractSheet: no sheet tab mapped for team "${teamName}" — check TEAM_SHEET_GIDS for an exact or near match.`
-    );
-    return null;
-  }
-
-  const cached = cache.get(gid);
+  const cacheKey = gid || `name:${normalizeTeamName(teamName)}`;
+  const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.time < CACHE_MS) return cached.data;
 
-  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&gid=${gid}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Contract sheet fetch failed for ${teamName}: ${res.status}`);
+  let text;
+  if (gid) {
+    const res = await fetch(gvizUrl(`gid=${gid}`));
+    if (!res.ok) throw new Error(`Contract sheet fetch failed for ${teamName}: ${res.status}`);
+    text = await res.text();
+  } else {
+    text = await fetchTabByName(teamName);
+    if (!text) {
+      console.warn(
+        `contractSheet: no tab found for "${teamName}" by name — add its gid to TEAM_SHEET_GIDS (the number after gid= in the tab's URL).`
+      );
+      return null;
+    }
   }
-  const text = await res.text();
   const parsed = parseTeamCsv(csvToRows(text));
 
   // eslint-disable-next-line no-console
   console.log(
-    `[contractSheet] ${teamName}: parsed ${parsed.players.length} players, years=${JSON.stringify(
+    `[contractSheet] ${teamName}: parsed ${parsed.players.length} players, deadCap=${(parsed.deadCap || []).length}, years=${JSON.stringify(
       parsed.years
     )}, sample=${JSON.stringify(parsed.players[0] || null)}`
   );
 
-  cache.set(gid, { time: Date.now(), data: parsed });
+  cache.set(cacheKey, { time: Date.now(), data: parsed });
   return parsed;
 }
 

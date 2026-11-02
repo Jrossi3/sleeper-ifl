@@ -16,7 +16,7 @@
 // makes it far more likely to actually fit under localStorage's ~5-10MB
 // per-origin quota instead of silently failing to cache every session.
 
-const CACHE_KEY = "ifl_sleeper_players_v1";
+const CACHE_KEY = "ifl_sleeper_players_v2";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // Sleeper's player DB updates ~daily
 
 function trimPlayers(raw) {
@@ -28,6 +28,7 @@ function trimPlayers(raw) {
       last_name: p.last_name,
       full_name: p.full_name || [p.first_name, p.last_name].filter(Boolean).join(" "),
       position: p.position,
+      years_exp: p.years_exp,
     };
   }
   return trimmed;

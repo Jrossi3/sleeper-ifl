@@ -3,7 +3,7 @@ import "./App.css";
 import Dropdown from "./components/dropdown";
 import TextInput from "./components/TextInput";
 import GridDisplay from "./components/GridDisplays";
-import { fetchTeamContracts, findContract } from "./utils/contractSheet";
+import { fetchTeamContracts, findContract, findDeadCapEntry, CAP_TOTAL } from "./utils/contractSheet";
 import { loadPlayers } from "./utils/playerCache";
 import CapCalculator from "./components/CapCalculator";
 import HallOfChampions from "./components/HallOfChampions";
@@ -79,6 +79,32 @@ function getTeamColor(id) {
 // dead-cap offsets) is a homebrew IFL rule set, not something Sleeper
 // tracks — it only applies to this specific league, never to any other
 // league a visitor might look up on this same site.
+// Players whose drops should never count as dead cap or appear in the
+// "Dropped players" table in Rosters and Records. Names are compared
+// ignoring case, punctuation, and Jr/Sr-style suffixes.
+const DROPPED_PLAYER_EXCEPTIONS = [
+  "Sone Ntoh",
+  "Qualan Jones",
+  "Dante Wright",
+  "Eli Wilson",
+  "Julian Fleming",
+  "Collin Schlee",
+  "Moose Muhammad",
+  "J.J. Jones",
+  "Justin Lockhart",
+  "Jimmy Bell",
+  "Kole Taylor",
+  "Reggie Brown",
+  "Sam Pitz",
+  "RJ Maryland",
+  "John Hoyland",
+  "Redd Douglas",
+  "Pat Conroy"
+];
+const exceptionKey = (n = "") =>
+  n.toLowerCase().replace(/[.'-]/g, "").replace(/\s+(jr|sr|ii|iii|iv)$/, "").replace(/\s+/g, " ").trim();
+const DROPPED_EXCEPTION_SET = new Set(DROPPED_PLAYER_EXCEPTIONS.map(exceptionKey));
+
 const IFL_LEAGUE_NAME = "The International Football League";
 
 /**
@@ -117,6 +143,8 @@ export default function App() {
   const [playersLoading, setPlayersLoading] = useState(true);
   const [trades, setTrades] = useState([]);
   const [freeAgents, setFreeAgents] = useState([]);
+  const [dropsByRoster, setDropsByRoster] = useState({});
+  const [pickupCosts, setPickupCosts] = useState({}); // { rosterId: { playerId: cost } }
   const [rosters, setRosters] = useState([]);
   const [teams, setTeams] = useState({});
   const [teamsKey, setKey] = useState([]);
@@ -437,6 +465,75 @@ export default function App() {
         let totalFreeAgents = weekResults.map((week) =>
           week.filter((t) => t.type === "free_agent" || t.type === "waiver").reverse()
         );
+        // Every player each roster has dropped this season (any non-trade
+        // transaction with a drop), in chronological order — used to
+        // price dropped players as dead cap in Rosters and Records.
+        // Sleeper keeps offseason / preseason moves under round 0, which the
+        // in-season week fetch above never covers.
+        const preseason = await fetch(`https://api.sleeper.app/v1/league/${currentLeague}/transactions/0`)
+          .then((r) => r.json())
+          .then((json) => (Array.isArray(json) ? json.filter((t) => t.status === "complete") : []))
+          .catch(() => []);
+        const allWeeks = [preseason, ...weekResults]; // index = week number
+        const drops = {};
+        allWeeks.forEach((week, wIdx) =>
+          [...week].reverse().forEach((t) => {
+            if (t.type === "trade" || t.type === "commissioner" || !t.drops) return;
+            Object.entries(t.drops).forEach(([pid, rid]) => {
+              (drops[rid] = drops[rid] || []).push({ player_id: pid, week: wIdx, time: t.status_updated ?? t.created ?? 0 });
+            });
+          })
+        );
+        setDropsByRoster(drops);
+
+        // What each player cost when picked up: FAAB bids on waiver/free
+        // agent adds, plus auction draft prices. A later pickup overwrites
+        // an earlier one, so the cost matches the most recent acquisition.
+        const costs = {};
+        // Collect every acquisition with a timestamp, then apply them in
+        // chronological order so the LATEST price always wins (an early
+        // preseason FAAB add must not override a later auction price).
+        const events = [];
+        try {
+          const draftList = await fetch(`https://api.sleeper.app/v1/league/${currentLeague}/drafts`).then((r) => r.json());
+          await Promise.all(
+            (draftList || []).map(async (d) => {
+              const picks = await fetch(`https://api.sleeper.app/v1/draft/${d.draft_id}/picks`)
+                .then((r) => r.json())
+                .catch(() => []);
+              const dTime = d.last_picked ?? d.start_time ?? d.created ?? 0;
+              (picks || []).forEach((pk) => {
+                const amt = pk.metadata?.amount;
+                if (amt != null && !isNaN(Number(amt)))
+                  events.push({ time: dTime, rid: pk.roster_id, pid: pk.player_id, amt: Number(amt) });
+              });
+            })
+          );
+        } catch (e) {
+          console.warn("Could not load auction draft prices", e);
+        }
+        allWeeks.forEach((week) =>
+          week.forEach((t) => {
+            if (!t.adds || (t.type !== "free_agent" && t.type !== "waiver")) return;
+            const time = t.status_updated ?? t.created ?? 0;
+            Object.entries(t.adds).forEach(([pid, rid]) =>
+              events.push({ time, rid, pid, amt: Number(t.settings?.waiver_bid ?? 0) })
+            );
+          })
+        );
+        events
+          .sort((x, y) => x.time - y.time)
+          .forEach((e) => {
+            (costs[e.rid] = costs[e.rid] || {})[e.pid] = e.amt;
+            // Also keyed by player alone: a traded player keeps the price
+            // he was acquired at, even though the roster id has changed.
+            (costs.byPlayer = costs.byPlayer || {})[e.pid] = e.amt;
+            // Per-owner history, oldest first, so a drop can be priced at
+            // what THAT owner paid for the stint that ended in the drop.
+            const hist = (costs.history = costs.history || {});
+            ((hist[e.rid] = hist[e.rid] || {})[e.pid] = hist[e.rid][e.pid] || []).push({ time: e.time, amt: e.amt });
+          });
+        setPickupCosts(costs);
         let totalTrades = weekResults.map((week) => week.filter((t) => t.type === "trade").reverse());
         setTradeCount(totalTrades.reduce((sum, w) => sum + w.length, 0));
 
@@ -913,26 +1010,130 @@ export default function App() {
                         }))
                       : playerList.map((pid) => {
                           const p = players[pid];
-                          const contract =
+                          const sheetContract =
                             teamContracts && p
                               ? findContract(teamContracts.players, `${p.first_name} ${p.last_name}`)
                               : null;
+                          // A sheet row with no Contract (end year) is unfinished:
+                          // its formulas fan the draft price out over five years.
+                          // When Sleeper has a pickup price for this owner, trust
+                          // that instead, for the current season only.
+                          const sleeperPrice = pickupCosts[roster.roster_id]?.[pid] ?? pickupCosts.byPlayer?.[pid];
+                          const sheetIncomplete = !!sheetContract && !sheetContract.contractEnd && sleeperPrice != null;
+                          const contract = sheetIncomplete ? null : sheetContract;
+                          // No sheet contract: fall back to what Sleeper says
+                          // the player cost (auction price / FAAB bid), charged
+                          // to the current season. Rookies (0 years of
+                          // experience) are allowed to have no cost.
+                          const paid = !contract && teamContracts
+                            ? pickupCosts[roster.roster_id]?.[pid] ?? pickupCosts.byPlayer?.[pid]
+                            : null;
+                          const isRookie = false; // every player needs a cost now
                           return {
                             name: p ? `${p.first_name} ${p.last_name}` : "",
                             position: p?.position ?? "",
-                            contractEnd: contract?.contractEnd ?? "",
-                            hitByYear: contract?.netCapByYear || {},
+                            contractEnd: contract?.contractEnd ?? (sheetIncomplete ? contractYears[0] : ""),
+                            hitByYear: (() => {
+                              const base = contract ? { ...(contract.netCapByYear || {}) } : {};
+                              const y0 = contractYears[0];
+                              if (teamContracts && y0 && base[y0] == null) {
+                                // Sheet row exists but has no 2026 value: use its
+                                // draft price, then Sleeper's pickup cost.
+                                // Sheet has no cost for this player: use the sheet's
+                                // draft price if present, otherwise Sleeper's
+                                // latest pickup price.
+                                const sl = pickupCosts[roster.roster_id]?.[pid] ?? pickupCosts.byPlayer?.[pid];
+                                if (contract?.draftPrice) base[y0] = contract.draftPrice;
+                                else if (sl != null) base[y0] = sl;
+                              }
+                              return base;
+                            })(),
                             rawByYear: contract?.capByYear || {},
+                            fromSleeper: paid != null,
+                            history: !contract
+                              ? (pickupCosts.history?.[roster.roster_id]?.[pid] || []).map(
+                                  (h) => `$${h.amt} on ${h.time ? new Date(h.time).toLocaleDateString() : "unknown date"}`
+                                )
+                              : [],
+                            missingCost: !!teamContracts && !!p && !contract && paid == null,
                           };
                         });
 
-                    const maxLen = Math.max(rows.length, irList.length, taxiList.length);
+                    // ── Dropped players → dead cap ──
+                    // Each dropped player is priced from the sheet: first its
+                    // "Dead Cap" row (already inside the sheet's totals), else
+                    // its still-listed contract row (not yet in the totals, so
+                    // it is subtracted from Remaining here). Anyone currently
+                    // back on the Sleeper roster is not dead cap.
+                    const deadRows = [];
+                    if (teamContracts) {
+                      const seen = new Set();
+                      // Only the most recent drop of each player counts.
+                      const latestDrops = new Map();
+                      (dropsByRoster[roster.roster_id] || []).forEach((d) => latestDrops.set(d.player_id, d));
+                      [...latestDrops.values()].forEach((d) => {
+                        const p = players[d.player_id];
+                        if (!p || seen.has(d.player_id) || playerList.includes(d.player_id)) return;
+                        const fullName = `${p.first_name} ${p.last_name}`;
+                        if (DROPPED_EXCEPTION_SET.has(exceptionKey(fullName))) return;
+                        seen.add(d.player_id);
+                        const dead = findDeadCapEntry(teamContracts.deadCap, fullName);
+                        const live = findContract(teamContracts.players, fullName);
+                        // What THIS owner paid for the stint that ended in the
+                        // drop: their latest acquisition at or before it.
+                        const ownerHist = pickupCosts.history?.[roster.roster_id]?.[d.player_id] || [];
+                        const before = ownerHist.filter((h) => h.time <= d.time);
+                        const ownerPaid = (before.length ? before : ownerHist).slice(-1)[0]?.amt;
+                        if (dead) {
+                          deadRows.push({ name: fullName, week: d.week, byYear: dead.byYear, inSheet: true });
+                        } else if (ownerPaid != null) {
+                          deadRows.push({
+                            name: fullName,
+                            week: d.week,
+                            byYear: { [contractYears[0]]: ownerPaid },
+                            inSheet: false,
+                            fromSleeper: true,
+                          });
+                        } else if (live) {
+                          deadRows.push({ name: fullName, week: d.week, byYear: live.netCapByYear || {}, inSheet: false });
+                        } else {
+                          // Not in the sheet at all: fall back to what
+                          // Sleeper says the player cost when picked up
+                          // (auction price / FAAB bid), charged to the
+                          // current season only since Sleeper has no
+                          // contract length.
+                          const paid = (pickupCosts[roster.roster_id]?.[d.player_id] ?? pickupCosts.byPlayer?.[d.player_id]);
+                          deadRows.push({
+                            name: fullName,
+                            week: d.week,
+                            byYear: paid != null ? { [contractYears[0]]: paid } : null,
+                            inSheet: false,
+                            fromSleeper: paid != null,
+                          });
+                        }
+                      });
+                    }
+                    const droppedNames = new Set(deadRows.filter((d) => !d.inSheet && d.byYear).map((d) => d.name));
+                    const activeRows = rows.filter((r) => !(useSheetAsRoster && droppedNames.has(r.name)));
+                    const maxLen = Math.max(activeRows.length, irList.length, taxiList.length);
 
-                    // Spent/Remaining come straight from the sheet's own
-                    // "Draft Cap Spent:" / "Remaining Budget:" rows — the
-                    // sheet already accounts for every source of dead money,
-                    // so there's no need to reconstruct it here.
-                    const budgetByYear = teamContracts?.budgetByYear || {};
+                    // Spent/Remaining are calculated here from the data shown
+                    // in the tables below, not read from the sheet's totals:
+                    //   active contracts (each row's cost that year)
+                    // + dead cap (every dead-cap row on the sheet, plus dropped
+                    //   players priced from Sleeper / their still-listed row)
+                    // Remaining = cap - spent.
+                    const budgetByYear = {};
+                    contractYears.forEach((y) => {
+                      const active = activeRows.reduce((sum, r) => sum + (r.hitByYear?.[y] || 0), 0);
+                      const sheetDead = (teamContracts?.deadCap || []).reduce((sum, d) => sum + (d.byYear?.[y] || 0), 0);
+                      const extraDead = deadRows.reduce(
+                        (sum, d) => sum + (!d.inSheet && d.byYear?.[y] ? d.byYear[y] : 0),
+                        0
+                      );
+                      const dead = sheetDead + extraDead;
+                      budgetByYear[y] = { active, dead, spent: active + dead, remaining: CAP_TOTAL - (active + dead) };
+                    });
 
                     return (
                       <div key={rosterIdx} className="my-4">
@@ -958,20 +1159,28 @@ export default function App() {
                             </thead>
                             <tbody>
                               <tr>
+                                <td>Active contracts</td>
+                                {contractYears.map((y) => (
+                                  <td key={y}>${budgetByYear[y].active}</td>
+                                ))}
+                              </tr>
+                              <tr>
+                                <td>Dead cap</td>
+                                {contractYears.map((y) => (
+                                  <td key={y}>${budgetByYear[y].dead}</td>
+                                ))}
+                              </tr>
+                              <tr>
                                 <td>Spent</td>
                                 {contractYears.map((y) => (
-                                  <td key={y}>
-                                    {budgetByYear[y]?.spent != null ? `$${budgetByYear[y].spent}` : "—"}
-                                  </td>
+                                  <td key={y}>${budgetByYear[y].spent}</td>
                                 ))}
                               </tr>
                               <tr>
                                 <td>Remaining</td>
                                 {contractYears.map((y) => (
                                   <td key={y}>
-                                    <strong>
-                                      {budgetByYear[y]?.remaining != null ? `$${budgetByYear[y].remaining}` : "—"}
-                                    </strong>
+                                    <strong>${budgetByYear[y].remaining}</strong>
                                   </td>
                                 ))}
                               </tr>
@@ -993,7 +1202,7 @@ export default function App() {
                           </thead>
                           <tbody>
                             {[...Array(maxLen)].map((_, i) => {
-                              const row = rows[i];
+                              const row = activeRows[i];
                               return (
                                 <tr key={i}>
                                   <td>{row?.name ?? ""}</td>
@@ -1007,9 +1216,21 @@ export default function App() {
                                       return (
                                         <td
                                           key={y}
-                                          title={isOffset ? `$${raw} drafted, offset to $${hit}` : undefined}
+                                          title={
+                                            isOffset
+                                              ? `$${raw} drafted, offset to $${hit}`
+                                              : row?.fromSleeper && hit != null
+                                              ? `Pickup cost from Sleeper (not on the sheet). Sleeper history for this owner: ${row.history?.join(", ") || "none"}`
+                                              : row?.missingCost && y === contractYears[0]
+                                              ? "No cost found on the sheet or in Sleeper"
+                                              : undefined
+                                          }
                                         >
-                                          {hit != null ? `$${hit}${isOffset ? " *" : ""}` : ""}
+                                          {hit != null
+                                            ? `$${hit}${isOffset ? " *" : row?.fromSleeper ? " †" : ""}`
+                                            : row?.missingCost && y === contractYears[0]
+                                            ? "—"
+                                            : ""}
                                         </td>
                                       );
                                     })}
@@ -1022,9 +1243,44 @@ export default function App() {
                             })}
                           </tbody>
                         </table>
+                        {teamContracts && deadRows.length > 0 && (
+                          <>
+                            <p className="ifl-note" style={{ marginTop: "1rem" }}>Dropped players (dead cap)</p>
+                            <table className="custom-table">
+                              <thead>
+                                <tr>
+                                  <th>Player</th>
+                                  <th>Dropped</th>
+                                  {contractYears.map((y) => <th key={y}>{y}</th>)}
+                                  <th>Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {deadRows.map((d, di) => (
+                                  <tr key={di}>
+                                    <td>{d.name}</td>
+                                    <td>{d.week === 0 ? "Preseason" : `Wk ${d.week}`}</td>
+                                    {contractYears.map((y) => (
+                                      <td key={y}>{d.byYear?.[y] != null ? `$${d.byYear[y]}` : d.byYear ? "" : "—"}</td>
+                                    ))}
+                                    <td>
+                                      {d.byYear == null
+                                        ? "no cost found in sheet or Sleeper"
+                                        : d.fromSleeper
+                                        ? "Sleeper pickup cost, counted in dead cap"
+                                        : d.inSheet
+                                        ? "in sheet totals"
+                                        : "counted in dead cap"}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </>
+                        )}
                         {teamContracts && (
                           <p className="ifl-note">
-                            * cap hit adjusted by a dead-cap / trade offset — hover for details
+                            * cap hit adjusted by a dead-cap / trade offset · † pickup cost from Sleeper (not on the sheet)
                           </p>
                         )}
                       </div>
