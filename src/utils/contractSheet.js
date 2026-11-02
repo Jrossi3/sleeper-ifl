@@ -119,22 +119,58 @@ const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "v"]);
 
 // Team defenses are listed inconsistently ("Rams", "Rams DEF", "LA Rams",
 // "Los Angeles Rams D/ST") while Sleeper calls them "Los Angeles Rams".
-const NFL_NICKNAMES = new Set([
-  "cardinals","falcons","ravens","bills","panthers","bears","bengals","browns","cowboys","broncos",
-  "lions","packers","texans","colts","jaguars","chiefs","raiders","chargers","rams","dolphins",
-  "vikings","patriots","saints","giants","jets","eagles","steelers","49ers","niners","seahawks",
-  "buccaneers","bucs","titans","commanders","washington",
-]);
-const DEF_WORDS = /\b(def|defense|dst|d st|d\/st|special teams|st)\b/g;
+// [nickname, city, abbreviations...] — a defense can be written as any of
+// these ("SF", "San Francisco", "49ers", "San Francisco 49ers D/ST").
+const NFL_TEAMS = [
+  ["cardinals", "arizona", "ari", "az"], ["falcons", "atlanta", "atl"], ["ravens", "baltimore", "bal"],
+  ["bills", "buffalo", "buf"], ["panthers", "carolina", "car"], ["bears", "chicago", "chi"],
+  ["bengals", "cincinnati", "cin"], ["browns", "cleveland", "cle"], ["cowboys", "dallas", "dal"],
+  ["broncos", "denver", "den"], ["lions", "detroit", "det"], ["packers", "green bay", "gb", "gnb"],
+  ["texans", "houston", "hou"], ["colts", "indianapolis", "ind"], ["jaguars", "jacksonville", "jax", "jac"],
+  ["chiefs", "kansas city", "kc", "kan"], ["raiders", "las vegas", "lv", "lvr", "oakland", "oak"],
+  ["chargers", "los angeles chargers", "lac", "sd"], ["rams", "los angeles rams", "lar", "stl"],
+  ["dolphins", "miami", "mia"], ["vikings", "minnesota", "min"], ["patriots", "new england", "ne", "nwe"],
+  ["saints", "new orleans", "no", "nor"], ["giants", "new york giants", "nyg"], ["jets", "new york jets", "nyj"],
+  ["eagles", "philadelphia", "phi"], ["steelers", "pittsburgh", "pit"], ["49ers", "san francisco", "sf", "sfo", "niners"],
+  ["seahawks", "seattle", "sea"], ["buccaneers", "tampa bay", "tb", "tam", "bucs"],
+  ["titans", "tennessee", "ten"], ["commanders", "washington", "was", "wsh", "redskins"],
+];
+const DEF_WORDS = /\b(def|defense|defence|dst|d st|d\/st|special teams|st|d)\b/g;
+const TEAM_ALIAS = new Map();
+NFL_TEAMS.forEach(([nick, ...aliases]) => {
+  TEAM_ALIAS.set(nick, nick);
+  aliases.forEach((a) => TEAM_ALIAS.set(a, nick));
+  aliases.forEach((a) => TEAM_ALIAS.set(`${a} ${nick}`, nick));
+});
+// Returns the team's nickname if the name is a team defense in any of the
+// accepted spellings, otherwise null.
 const defenseKey = (name) => {
+  const hadDefWord = DEF_WORDS.test(normalize(name.replace(/\//g, " ")));
+  DEF_WORDS.lastIndex = 0;
   const cleaned = normalize(name.replace(/\//g, " ")).replace(DEF_WORDS, " ").replace(/\s+/g, " ").trim();
+  if (TEAM_ALIAS.has(cleaned)) {
+    // Bare abbreviations/cities ("no", "was", "car") are only trusted with a
+    // defense marker or a nickname, to avoid matching ordinary names.
+    const isNick = NFL_TEAMS.some((t) => t[0] === cleaned);
+    const multiWord = cleaned.includes(" ");
+    if (isNick || multiWord || hadDefWord || cleaned.length >= 2) return TEAM_ALIAS.get(cleaned);
+  }
+  // "LA Rams", "NY Jets": a nickname as the last word identifies the team.
   const last = cleaned.split(" ").pop();
-  return NFL_NICKNAMES.has(last) ? last : null;
+  return NFL_TEAMS.some((t) => t[0] === last) ? last : null;
 };
 const stripSuffix = (parts) =>
   parts.length > 1 && SUFFIXES.has(parts[parts.length - 1]) ? parts.slice(0, -1) : parts;
 
-function namesMatch(a, b) {
+function withinOneEdit(a, b) {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1);
+  return a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
+}
+
+export function namesMatch(a, b) {
   const na = normalize(a);
   const nb = normalize(b);
   if (!na || !nb) return false;
@@ -146,13 +182,22 @@ function namesMatch(a, b) {
   const bParts = stripSuffix(nb.split(" "));
   const aLast = aParts[aParts.length - 1];
   const bLast = bParts[bParts.length - 1];
-  if (aLast !== bLast) return false;
   const aFirst = aParts[0];
   const bFirst = bParts[0];
+  if (aLast !== bLast) {
+    // Same first name, last name one letter off ("McGowen" vs "McGowan").
+    return (
+      aFirst.length > 2 && aFirst === bFirst &&
+      aLast.length >= 5 && bLast.length >= 5 && withinOneEdit(aLast, bLast)
+    );
+  }
   if (aFirst.length <= 2 || bFirst.length <= 2) {
     return aFirst[0] === bFirst[0];
   }
-  return aFirst === bFirst;
+  if (aFirst === bFirst) return true;
+  // One-letter typo in the first name ("Tyron" vs "Tyrone"): same last
+  // name plus a first name one edit away is the same person.
+  return aFirst.length >= 5 && bFirst.length >= 5 && withinOneEdit(aFirst, bFirst);
 }
 
 export function findContract(contractPlayers, sleeperFullName) {
@@ -175,7 +220,7 @@ export function findDeadCapEntry(deadCap, fullName) {
       byYear[y] = (byYear[y] || 0) + v;
     })
   );
-  return { name: matches[0].name, byYear };
+  return { name: matches[0].name, names: matches.map((m) => m.name), byYear };
 }
 
 // Google's CSV export can render currency-formatted cells as "$104" and

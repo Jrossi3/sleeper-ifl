@@ -3,7 +3,7 @@ import "./App.css";
 import Dropdown from "./components/dropdown";
 import TextInput from "./components/TextInput";
 import GridDisplay from "./components/GridDisplays";
-import { fetchTeamContracts, findContract, findDeadCapEntry, CAP_TOTAL } from "./utils/contractSheet";
+import { fetchTeamContracts, findContract, findDeadCapEntry, namesMatch, CAP_TOTAL } from "./utils/contractSheet";
 import { loadPlayers } from "./utils/playerCache";
 import { loadPriorPickups } from "./utils/priorSeasons";
 import CapCalculator from "./components/CapCalculator";
@@ -100,7 +100,6 @@ const DROPPED_PLAYER_EXCEPTIONS = [
   "RJ Maryland",
   "John Hoyland",
   "Redd Douglas",
-  "Pat Conroy"
 ];
 const exceptionKey = (n = "") =>
   n.toLowerCase().replace(/[.'-]/g, "").replace(/\s+(jr|sr|ii|iii|iv)$/, "").replace(/\s+/g, " ").trim();
@@ -1136,8 +1135,15 @@ export default function App() {
                           });
                         }
 
-                        if (dead) {
-                          deadRows.push({ name: fullName, week: d.week, byYear: dead.byYear, inSheet: true });
+                        // A sheet dead-cap row that still shows the original
+                        // signing price (not yet escalated) is stale: the
+                        // escalated amount for this season is the real one.
+                        const deadStale =
+                          !!dead && base != null && escalated[contractYears[0]] != null &&
+                          dead.byYear?.[contractYears[0]] === base &&
+                          escalated[contractYears[0]] !== base;
+                        if (dead && !deadStale) {
+                          deadRows.push({ name: fullName, week: d.week, byYear: dead.byYear, inSheet: true, sheetNames: dead.names });
                         } else if (Object.keys(escalated).length) {
                           deadRows.push({
                             name: fullName,
@@ -1145,6 +1151,7 @@ export default function App() {
                             byYear: escalated,
                             inSheet: false,
                             fromSleeper: !liveComplete,
+                            sheetNames: dead ? dead.names : [],
                           });
                         } else if (live) {
                           deadRows.push({ name: fullName, week: d.week, byYear: live.netCapByYear || {}, inSheet: false });
@@ -1160,6 +1167,29 @@ export default function App() {
                         }
                       });
                     }
+                    // Sheet dead-cap rows that no Sleeper drop matched (offseason
+                    // cuts, trades, etc.). They are listed so the table adds up
+                    // to the Dead cap total; rows for players on the exception
+                    // list are left out of both.
+                    const unmatchedSheetDead = (teamContracts?.deadCap || []).filter(
+                      (e) =>
+                        !DROPPED_EXCEPTION_SET.has(exceptionKey(e.name)) &&
+                        !deadRows.some((r) => (r.sheetNames || []).includes(e.name) || (r.inSheet && namesMatch(r.name, e.name)))
+                    );
+                    unmatchedSheetDead.forEach((e) =>
+                      deadRows.push({ name: e.name, week: null, byYear: e.byYear, inSheet: true, sheetOnly: true })
+                    );
+                    // Final safety net: if two rows still describe the same
+                    // player (misspelling, "SF" vs "San Francisco 49ers"), keep
+                    // one — preferring a row from an actual Sleeper drop.
+                    const uniqueDead = [];
+                    deadRows.forEach((row) => {
+                      const at = uniqueDead.findIndex((u) => namesMatch(u.name, row.name));
+                      if (at === -1) uniqueDead.push(row);
+                      else if (uniqueDead[at].sheetOnly && !row.sheetOnly) uniqueDead[at] = row;
+                    });
+                    deadRows.length = 0;
+                    uniqueDead.forEach((r) => deadRows.push(r));
                     const droppedNames = new Set(deadRows.filter((d) => !d.inSheet && d.byYear).map((d) => d.name));
                     const activeRows = rows.filter((r) => !(useSheetAsRoster && droppedNames.has(r.name)));
                     const maxLen = Math.max(activeRows.length, irList.length, taxiList.length);
@@ -1173,12 +1203,9 @@ export default function App() {
                     const budgetByYear = {};
                     contractYears.forEach((y) => {
                       const active = activeRows.reduce((sum, r) => sum + (r.hitByYear?.[y] || 0), 0);
-                      const sheetDead = (teamContracts?.deadCap || []).reduce((sum, d) => sum + (d.byYear?.[y] || 0), 0);
-                      const extraDead = deadRows.reduce(
-                        (sum, d) => sum + (!d.inSheet && d.byYear?.[y] ? d.byYear[y] : 0),
-                        0
-                      );
-                      const dead = sheetDead + extraDead;
+                      // Every row in the Dead cap table below, so the table
+                      // always adds up to this total.
+                      const dead = deadRows.reduce((sum, d) => sum + (d.byYear?.[y] || 0), 0);
                       budgetByYear[y] = { active, dead, spent: active + dead, remaining: CAP_TOTAL - (active + dead) };
                     });
 
@@ -1317,12 +1344,14 @@ export default function App() {
                                 {deadRows.map((d, di) => (
                                   <tr key={di}>
                                     <td>{d.name}</td>
-                                    <td>{d.week === 0 ? "Preseason" : `Wk ${d.week}`}</td>
+                                    <td>{d.week == null ? "—" : d.week === 0 ? "Preseason" : `Wk ${d.week}`}</td>
                                     {contractYears.map((y) => (
                                       <td key={y}>{d.byYear?.[y] != null ? `$${d.byYear[y]}` : d.byYear ? "" : "—"}</td>
                                     ))}
                                     <td>
-                                      {d.byYear == null
+                                      {d.sheetOnly
+                                        ? "sheet dead cap row (no Sleeper drop)"
+                                        : d.byYear == null
                                         ? "no cost found in sheet or Sleeper"
                                         : d.fromSleeper
                                         ? "Sleeper price, +18% per season, counted in dead cap"
@@ -1332,6 +1361,14 @@ export default function App() {
                                     </td>
                                   </tr>
                                 ))}
+                                <tr>
+                                  <td><strong>Total dead cap</strong></td>
+                                  <td></td>
+                                  {contractYears.map((y) => (
+                                    <td key={y}><strong>${budgetByYear[y].dead}</strong></td>
+                                  ))}
+                                  <td></td>
+                                </tr>
                               </tbody>
                             </table>
                           </>
