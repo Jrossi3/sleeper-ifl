@@ -453,3 +453,21 @@
       width: 100%;
     }
   }
+  
+  /* Cost tooltip — a real element, so it works on hover, keyboard focus, and tap */
+  .cost-cell { cursor: help; }
+  .cost-tip {
+    position: fixed;
+    z-index: 1000;
+    max-width: 260px;
+    padding: 8px 10px;
+    background: var(--pitch-deep);
+    color: var(--chalk);
+    border: 1px solid var(--floodlight-dim);
+    border-radius: 6px;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+  }
+  
