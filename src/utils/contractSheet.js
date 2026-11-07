@@ -255,27 +255,6 @@ function findHeaderRowCandidates(rows) {
   return candidates;
 }
 
-// The sheet already computes per-year totals itself in labeled summary
-// rows ("Remaining Budget:", "Draft Cap Spent:") — read those directly
-// instead of reconstructing them from the roster + dead cap section,
-// which requires guessing at every source of dead money. Values start
-// wherever the first real number appears after the label cell.
-function findLabeledSeries(rows, labelRegex, yearCount) {
-  for (const r of rows) {
-    const labelIdx = r.findIndex((c) => labelRegex.test((c || "").trim()));
-    if (labelIdx === -1) continue;
-    const valueStart = findValueStart(r, labelIdx);
-    if (valueStart === -1) continue;
-    const values = [];
-    for (let k = 0; k < yearCount; k++) {
-      const v = toNumber(r[valueStart + k]);
-      values.push(isNaN(v) ? null : v);
-    }
-    return values;
-  }
-  return null;
-}
-
 // Attempts to parse the player roster starting from one candidate header
 // row. Returns { players, nextRowIdx } — nextRowIdx is where scanning
 // should resume for the DEAD CAP section afterward.
@@ -339,7 +318,6 @@ function parsePlayersFromHeader(rows, headerIdx, upper, years) {
       draftedYear: draftedIdx !== -1 ? extractYear(r[draftedIdx]) || (r[draftedIdx] || "").trim() : "",
       draftPrice: priceIdx !== -1 ? (isNaN(toNumber(r[priceIdx])) ? 0 : toNumber(r[priceIdx])) : 0,
       capByYear,
-      rawRow: r.slice(0, 20),
       offsetByYear: {},
     });
   }
@@ -444,22 +422,7 @@ function parseTeamCsv(rows) {
   // team, which is confusing to compare side by side.
   const displayYears = years.slice(0, 5);
 
-  const spentSeries = findLabeledSeries(rows, /DRAFT CAP SPENT/i, displayYears.length);
-  const remainingSeries = findLabeledSeries(rows, /REMAINING BUDGET/i, displayYears.length);
-  if (!spentSeries || !remainingSeries) {
-    console.warn(
-      "contractSheet: couldn't find 'Draft Cap Spent:' / 'Remaining Budget:' rows — team cap totals will be unavailable."
-    );
-  }
-  const budgetByYear = {};
-  displayYears.forEach((y, k) => {
-    budgetByYear[y] = {
-      spent: spentSeries?.[k] ?? null,
-      remaining: remainingSeries?.[k] ?? null,
-    };
-  });
-
-  return { players, years: displayYears, budgetByYear, deadCap };
+  return { players, years: displayYears, deadCap };
 }
 
 // ── Public API ───────────────────────────────────────────────────────────
@@ -526,13 +489,6 @@ export async function fetchTeamContracts(teamName) {
     }
   }
   const parsed = parseTeamCsv(csvToRows(text));
-
-  // eslint-disable-next-line no-console
-  console.log(
-    `[contractSheet] ${teamName}: parsed ${parsed.players.length} players, deadCap=${(parsed.deadCap || []).length}, years=${JSON.stringify(
-      parsed.years
-    )}, sample=${JSON.stringify(parsed.players[0] || null)}`
-  );
 
   cache.set(cacheKey, { time: Date.now(), data: parsed });
   return parsed;

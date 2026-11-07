@@ -269,11 +269,6 @@
   
   /* ── Tables — the cap ledger ──────────────────────────────────────────── */
   
-  .custom-table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  
   .custom-table {
     width: 90%;
     max-width: 900px;
@@ -325,37 +320,6 @@
   
   .custom-table strong {
     color: var(--floodlight);
-  }
-  
-  .trade-separator td {
-    border-bottom: 3px solid var(--floodlight-dim);
-  }
-  
-  /* ── Positions grid ───────────────────────────────────────────────────── */
-  
-  .positions-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-auto-rows: minmax(40px, auto);
-    gap: 10px;
-    max-height: calc(4 * 40px + 30px);
-    overflow-y: auto;
-    width: 60%;
-    margin: 0 auto;
-    justify-items: center;
-  }
-  
-  .positions-grid p {
-    background-color: var(--turf);
-    border: 1px solid var(--turf-line);
-    border-radius: 8px;
-    padding: 6px 10px;
-    width: 100%;
-    max-width: 150px;
-    text-align: center;
-    font-family: var(--font-mono);
-    font-weight: 500;
-    color: var(--chalk);
   }
   
   .grid-container {

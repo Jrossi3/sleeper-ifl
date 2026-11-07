@@ -1002,12 +1002,6 @@ export default function App() {
               {/* ── Rosters ── */}
               {transaction === "Rosters and Records" && (
                 <>
-                  {/* eslint-disable-next-line no-console */}
-                  {console.log(
-                    `[Rosters] year=${JSON.stringify(year)} availableYears[0]=${JSON.stringify(
-                      availableYears[0]
-                    )} isCurrentSeason=${isCurrentSeason}`
-                  )}
                   {contractsLoading && <p style={{ textAlign: "center" }}>Loading contract data…</p>}
                   {rosters.map((roster, rosterIdx) => {
                     const playerList = roster.players || [];
@@ -1051,12 +1045,10 @@ export default function App() {
                           const contract = sheetIncomplete ? null : sheetContract;
                           // No sheet contract: fall back to what Sleeper says
                           // the player cost (auction price / FAAB bid), charged
-                          // to the current season. Rookies (0 years of
-                          // experience) are allowed to have no cost.
+                          // to the current season.
                           const paid = !contract && teamContracts
                             ? pickupCosts[roster.roster_id]?.[pid] ?? pickupCosts.byPlayer?.[pid]
                             : null;
-                          const isRookie = false; // every player needs a cost now
                           return {
                             name: p ? `${p.first_name} ${p.last_name}` : "",
                             position: p?.position ?? "",
@@ -1065,8 +1057,6 @@ export default function App() {
                               const base = contract ? { ...(contract.netCapByYear || {}) } : {};
                               const y0 = contractYears[0];
                               if (teamContracts && y0 && base[y0] == null) {
-                                // Sheet row exists but has no 2026 value: use its
-                                // draft price, then Sleeper's pickup cost.
                                 // Sheet has no cost for this player: use the sheet's
                                 // draft price if present, otherwise Sleeper's
                                 // latest pickup price.
@@ -1176,9 +1166,27 @@ export default function App() {
                         !DROPPED_EXCEPTION_SET.has(exceptionKey(e.name)) &&
                         !deadRows.some((r) => (r.sheetNames || []).includes(e.name) || (r.inSheet && namesMatch(r.name, e.name)))
                     );
-                    unmatchedSheetDead.forEach((e) =>
-                      deadRows.push({ name: e.name, week: null, byYear: e.byYear, inSheet: true, sheetOnly: true })
-                    );
+                    // One player can have several sheet rows (e.g. a +$114
+                    // cut and a -$28 discount covered by another team), so
+                    // combine them per player: 114 - 28 = $86, not two rows.
+                    const sheetOnlyRows = [];
+                    unmatchedSheetDead.forEach((e) => {
+                      const same = sheetOnlyRows.find((r) => namesMatch(r.name, e.name));
+                      if (same) {
+                        Object.entries(e.byYear).forEach(([y, v]) => {
+                          same.byYear[y] = (same.byYear[y] || 0) + v;
+                        });
+                      } else {
+                        sheetOnlyRows.push({
+                          name: e.name,
+                          week: null,
+                          byYear: { ...e.byYear },
+                          inSheet: true,
+                          sheetOnly: true,
+                        });
+                      }
+                    });
+                    sheetOnlyRows.forEach((r) => deadRows.push(r));
                     // Final safety net: if two rows still describe the same
                     // player (misspelling, "SF" vs "San Francisco 49ers"), keep
                     // one — preferring a row from an actual Sleeper drop.
