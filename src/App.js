@@ -8,6 +8,8 @@ import { loadPlayers } from "./utils/playerCache";
 import { loadPriorPickups } from "./utils/priorSeasons";
 import CapCalculator from "./components/CapCalculator";
 import HallOfChampions from "./components/HallOfChampions";
+import IflPasswordGate from "./components/IflPasswordGate";
+import { hasIflAccess, grantIflAccess, revokeIflAccess } from "./utils/iflAccess";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -178,6 +180,10 @@ export default function App() {
   const [idUser, setUserId] = useState(savedSession.idUser || "");
   const [leagueId, setLeagueId] = useState(savedSession.leagueId || "");
   const [leagueName, setLeagueName] = useState(savedSession.leagueName || "");
+  // The IFL is password protected; the password is remembered on this device
+  // (until "Logout & clear data"), so switching leagues never asks twice.
+  const [iflUnlocked, setIflUnlocked] = useState(hasIflAccess);
+  const iflLocked = leagueName === IFL_LEAGUE_NAME && !iflUnlocked;
   const [leagueType, setLeagueType] = useState(savedSession.leagueType || "");
   const [positions, setLeaguePositions] = useState(savedSession.positions || []);
   const [dropdownLeagueOptions, setLeagueDropdown] = useState([]);
@@ -287,6 +293,8 @@ export default function App() {
     setNewTeam("All Teams");
     setTransactions("Trades");
     localStorage.removeItem(SESSION_KEY);
+    revokeIflAccess();
+    setIflUnlocked(false);
     alert("User data cleared.");
   };
 
@@ -396,7 +404,7 @@ export default function App() {
 
   // Fetch matchups
   useEffect(() => {
-    if (!leagueId) return;
+    if (!leagueId || iflLocked) return;
     const currentLeague = leagueId;
     const fetchMatchups = async () => {
       try {
@@ -444,11 +452,11 @@ export default function App() {
       }
     };
     fetchMatchups();
-  }, [activeWeek, leagueId, transaction, newTeam]);
+  }, [activeWeek, leagueId, transaction, newTeam, iflLocked]);
 
   // Fetch transactions, rosters, and users
   useEffect(() => {
-    if (!leagueId) return;
+    if (!leagueId || iflLocked) return;
     const currentLeague = leagueId;
     setLoading(true);
 
@@ -632,7 +640,7 @@ export default function App() {
       }
     };
     fetchTransactions();
-  }, [newTeam, leagueId, transaction, activeWeek, year]);
+  }, [newTeam, leagueId, transaction, activeWeek, year, iflLocked]);
 
   // Fetch dynasty picks
   useEffect(() => {
@@ -648,7 +656,7 @@ export default function App() {
 
   // Earlier seasons' pickups, for pricing dropped players on multi-year deals.
   useEffect(() => {
-    if (!leagueId || leagueName !== IFL_LEAGUE_NAME || !isCurrentSeason || transaction !== "Rosters and Records") return;
+    if (!leagueId || iflLocked || leagueName !== IFL_LEAGUE_NAME || !isCurrentSeason || transaction !== "Rosters and Records") return;
     let cancelled = false;
     loadPriorPickups(leagueId).then((h) => {
       if (!cancelled) setPriorHistory(h);
@@ -657,7 +665,7 @@ export default function App() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leagueId, leagueName, isCurrentSeason, transaction]);
+  }, [leagueId, leagueName, isCurrentSeason, transaction, iflLocked]);
 
   // Fetch live cap/contract data from the Google Sheet whenever the
   // Rosters view or Cap Calculator is open. Re-fetches on every visit
@@ -666,6 +674,7 @@ export default function App() {
   useEffect(() => {
     const needsContracts =
       leagueName === IFL_LEAGUE_NAME &&
+      !iflLocked &&
       isCurrentSeason &&
       (transaction === "Rosters and Records" || transaction === "Cap Calculator");
     if (!needsContracts || !rosters.length) return;
@@ -692,7 +701,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [transaction, rosters]);
+  }, [transaction, rosters, iflLocked]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -718,7 +727,7 @@ export default function App() {
             )}
           </h1>
           <p className="ifl-tagline">
-            {leagueName === IFL_LEAGUE_NAME
+            {leagueName === IFL_LEAGUE_NAME && !iflLocked
               ? "Ten franchises. One salary cap. Every contract, every trade, every season."
               : "Rosters, trades, matchups, and draft history — all in one place."}
           </p>
@@ -741,7 +750,7 @@ export default function App() {
               <div className="ifl-select-row">
                 <Dropdown placeholder="Select a League" options={dropdownLeagueOptions} onSelect={handleDropdownLeague} resetTrigger={user} />
 
-                {leagueName && (
+                {leagueName && !iflLocked && (
                   <>
                     {availableYears.length > 1 && (
                       <Dropdown placeholder="Select a year" options={dropdownYearOptions} onSelect={(o) => setYear(o.label)} value={year} />
@@ -763,7 +772,14 @@ export default function App() {
           )}
         </div>
 
-        {loading ? (
+        {iflLocked && user ? (
+          <IflPasswordGate
+            onUnlock={() => {
+              grantIflAccess();
+              setIflUnlocked(true);
+            }}
+          />
+        ) : loading ? (
           <p style={{ textAlign: "center" }}>Loading...</p>
         ) : user && leagueId ? (
           <div style={{ textAlign: "center" }}>
