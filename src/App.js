@@ -151,7 +151,7 @@ export default function App() {
   const [tip, setTip] = useState(null); // { text, x, y } for the cost tooltip
   const [pickupCosts, setPickupCosts] = useState({}); // { rosterId: { playerId: cost } }
   const [rosters, setRosters] = useState([]);
-  const [allRosters, setAllRosters] = useState([]); // every team, ignoring the team filter (for Standings)
+  const [allRosters, setAllRosters] = useState([]); // every team, ignoring the team filter (used by Trade Builder)
   const [teams, setTeams] = useState({});
   const [teamsKey, setKey] = useState([]);
   const [dropdownTeamOptions, setDropdownTeams] = useState([]);
@@ -342,77 +342,43 @@ export default function App() {
     }
   };
 
-  // Finds every season of the selected league and combines three strategies:
+  // Finds every season of the selected league two ways and combines them:
   //  1. Walking Sleeper's previous_league_id chain from the selected season
   //     (works even if the league was renamed between seasons).
-  //  2. Matching the league's name among the user's leagues for each year —
-  //     exactly, then ignoring years/punctuation ("2025 Work League" and
-  //     "Work League" are the same league).
-  //  3. For leagues that were re-created each year (no chain, new name): the
-  //     one league that year with the same size, roster slots and type.
-  // 2 and 3 also find seasons NEWER than the selected one.
+  //  2. Matching the league's name among the user's leagues for each year
+  //     (also finds seasons NEWER than the selected one).
   const fetchAvailableYears = async (selectedLeagueName, selectedLeagueId) => {
     if (!idUser) return;
     const byYear = {};
     const thisYear = new Date().getFullYear();
     const yearsToCheck = Array.from({ length: thisYear - 2016 }, (_, i) => String(thisYear - i));
-    const normName = (n = "") =>
-      n.toLowerCase().replace(/\b(19|20)\d{2}\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
-    const fingerprint = (l) =>
-      JSON.stringify([
-        l?.total_rosters,
-        (l?.roster_positions || []).join(","),
-        (l?.settings?.taxi_slots || 0) > 0,
-        l?.settings?.type,
-      ]);
 
-    const getLeague = (id) =>
-      fetch(`https://api.sleeper.app/v1/league/${id}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
-
-    let selectedInfo = null;
     const walkChain = async () => {
       let id = selectedLeagueId;
       for (let hops = 0; id && id !== "0" && hops < 15; hops++) {
-        const info = await getLeague(id);
+        const info = await fetch(`https://api.sleeper.app/v1/league/${id}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
         if (!info) break;
-        if (hops === 0) selectedInfo = info;
         byYear[String(info.season)] = id;
         id = info.previous_league_id;
       }
     };
-
-    const matchByName = () => {
-      const targetName = normName(selectedLeagueName);
-      const targetPrint = selectedInfo ? fingerprint(selectedInfo) : null;
-      return Promise.all(
+    const matchByName = () =>
+      Promise.all(
         yearsToCheck.map((y) =>
           fetch(`https://api.sleeper.app/v1/user/${idUser}/leagues/nfl/${y}`)
             .then((r) => (r.ok ? r.json() : []))
             .then((leagues) => {
-              if (byYear[y]) return;
-              const list = leagues || [];
-              const hit =
-                list.find((l) => l.name === selectedLeagueName) ||
-                list.find((l) => normName(l.name) === targetName);
-              if (hit) {
-                byYear[y] = hit.league_id;
-                return;
-              }
-              if (!targetPrint) return;
-              const claimed = new Set(Object.values(byYear));
-              const similar = list.filter((l) => !claimed.has(l.league_id) && fingerprint(l) === targetPrint);
-              if (similar.length === 1) byYear[y] = similar[0].league_id;
+              const hit = (leagues || []).find((l) => l.name === selectedLeagueName);
+              if (hit && !byYear[y]) byYear[y] = hit.league_id;
             })
             .catch(() => {})
         )
       );
-    };
 
     try {
-      await walkChain(); // first, so the name/shape matching knows which seasons are taken
-      await matchByName();
+      await Promise.all([walkChain(), matchByName()]);
       const years = Object.keys(byYear).sort((a, b) => b - a);
       if (years.length) {
         setLeagueIdByYear(byYear);
@@ -429,11 +395,8 @@ export default function App() {
     const fetchLeagues = async () => {
       try {
         const res = await fetch(`https://api.sleeper.app/v1/user/${idUser}/leagues/nfl/${year}`);
-        const leagues = (await res.json()) || [];
-        // A season found through the league's own history is used even when
-        // the user's league list for that year doesn't include it.
-        const knownForYear = leagueName ? leagueIdByYearRef.current[year] : undefined;
-        if (!leagues.length && !knownForYear) { alert(`User "${user}" has no leagues.`); return; }
+        const leagues = await res.json();
+        if (!leagues?.length) { alert(`User "${user}" has no leagues.`); return; }
 
         const temp = leagues.map((l) => ({
           label: l.name,
@@ -442,10 +405,10 @@ export default function App() {
           roster: l.roster_positions.filter((p) => p !== "BN"),
         }));
 
-        // The season map built from the league's history wins over a plain
-        // name match: it also covers renamed and re-created leagues.
         const match = temp.find((l) => l.label === leagueName);
-        const knownId = knownForYear ?? match?.id;
+        // A renamed league won't match by name, but its id for this season is
+        // known from the season chain.
+        const knownId = match?.id ?? (leagueName ? leagueIdByYearRef.current[year] : undefined);
         if (knownId) {
           setLeagueId(knownId);
         } else {
@@ -1129,13 +1092,13 @@ export default function App() {
                         <th>Team</th>
                         <th>W</th>
                         <th>L</th>
-                        {allRosters.some((r) => r.ties > 0) && <th>T</th>}
+                        {rosters.some((r) => r.ties > 0) && <th>T</th>}
                         <th>PF</th>
                         <th>PA</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {[...allRosters]
+                      {[...rosters]
                         .sort((a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor)
                         .map((r, i) => (
                           <tr key={r.roster_id}>
@@ -1145,7 +1108,7 @@ export default function App() {
                             </td>
                             <td>{r.wins}</td>
                             <td>{r.losses}</td>
-                            {allRosters.some((x) => x.ties > 0) && <td>{r.ties}</td>}
+                            {rosters.some((x) => x.ties > 0) && <td>{r.ties}</td>}
                             <td>{r.pointsFor.toFixed(2)}</td>
                             <td>{r.pointsAgainst.toFixed(2)}</td>
                           </tr>
@@ -1205,7 +1168,7 @@ export default function App() {
 
               {/* ── Hall of Champions ── */}
               {transaction === "Hall of Champions" && (
-                <HallOfChampions idUser={idUser} leagueName={leagueName} leagueIdByYear={leagueIdByYear} year={year} players={players} />
+                <HallOfChampions idUser={idUser} leagueName={leagueName} year={year} players={players} />
               )}
 
               {/* ── Trades ── */}
