@@ -9,6 +9,7 @@ import { loadPriorPickups } from "./utils/priorSeasons";
 import CapCalculator from "./components/CapCalculator";
 import HallOfChampions from "./components/HallOfChampions";
 import IflPasswordGate from "./components/IflPasswordGate";
+import TradeBuilder from "./components/TradeBuilder";
 import { hasIflAccess, grantIflAccess, revokeIflAccess } from "./utils/iflAccess";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -150,10 +151,12 @@ export default function App() {
   const [tip, setTip] = useState(null); // { text, x, y } for the cost tooltip
   const [pickupCosts, setPickupCosts] = useState({}); // { rosterId: { playerId: cost } }
   const [rosters, setRosters] = useState([]);
+  const [allRosters, setAllRosters] = useState([]); // every team, ignoring the team filter (for Standings)
   const [teams, setTeams] = useState({});
   const [teamsKey, setKey] = useState([]);
   const [dropdownTeamOptions, setDropdownTeams] = useState([]);
   const [dynastyPicks, setDynastyPicks] = useState([]);
+  const [tradePicks, setTradePicks] = useState([]); // every team's tradable picks (Trade Builder)
   const [matchups, setMatchups] = useState([]);
   const [contractsByTeam, setContractsByTeam] = useState({});
   const [contractsLoading, setContractsLoading] = useState(false);
@@ -182,7 +185,14 @@ export default function App() {
   const [leagueName, setLeagueName] = useState(savedSession.leagueName || "");
   // The IFL is password protected; the password is remembered on this device
   // (until "Logout & clear data"), so switching leagues never asks twice.
-  const [iflUnlocked, setIflUnlocked] = useState(hasIflAccess);
+  const [iflUnlocked, setIflUnlocked] = useState(false);
+  const [iflAccessChecked, setIflAccessChecked] = useState(false);
+  useEffect(() => {
+    Promise.resolve(hasIflAccess()).then((ok) => {
+      setIflUnlocked(ok);
+      setIflAccessChecked(true);
+    });
+  }, []);
   const iflLocked = leagueName === IFL_LEAGUE_NAME && !iflUnlocked;
   const [leagueType, setLeagueType] = useState(savedSession.leagueType || "");
   const [positions, setLeaguePositions] = useState(savedSession.positions || []);
@@ -190,6 +200,11 @@ export default function App() {
 
   const [year, setYear] = useState(savedSession.year || "2026");
   const [availableYears, setAvailableYears] = useState(savedSession.availableYears || ["2026"]);
+  // { "2025": leagueId, ... } for the selected league, so a year switch finds the
+  // right season even if the league was renamed in between.
+  const [leagueIdByYear, setLeagueIdByYear] = useState(savedSession.leagueIdByYear || {});
+  const leagueIdByYearRef = useRef(leagueIdByYear);
+  leagueIdByYearRef.current = leagueIdByYear;
   const [newTeam, setNewTeam] = useState(savedSession.newTeam || "All Teams");
   const [transaction, setTransactions] = useState(savedSession.transaction || "Trades");
   const [tradeCount, setTradeCount] = useState(1);
@@ -205,9 +220,9 @@ export default function App() {
   useEffect(() => {
     saveSession({
       user, idUser, leagueId, leagueName, leagueType, positions,
-      year, availableYears, newTeam, transaction,
+      year, availableYears, leagueIdByYear, newTeam, transaction,
     });
-  }, [user, idUser, leagueId, leagueName, leagueType, positions, year, availableYears, newTeam, transaction]);
+  }, [user, idUser, leagueId, leagueName, leagueType, positions, year, availableYears, leagueIdByYear, newTeam, transaction]);
 
   // ── Derived options ───────────────────────────────────────────────────────────
 
@@ -263,7 +278,7 @@ export default function App() {
     { label: "Matchups" },
     { label: "Player Search" },
     { label: "Hall of Champions" },
-    ...(leagueName === IFL_LEAGUE_NAME && isCurrentSeason ? [{ label: "Cap Calculator" }] : []),
+    ...(leagueName === IFL_LEAGUE_NAME && isCurrentSeason ? [{ label: "Cap Calculator" }, { label: "Trade Builder" }] : []),
     ...(leagueType === "Dynasty" ? [{ label: "Draft Picks" }] : []),
   ];
 
@@ -290,6 +305,7 @@ export default function App() {
     setWeekChecker(false);
     setYear("2026");
     setAvailableYears(["2026"]);
+    setLeagueIdByYear({});
     setNewTeam("All Teams");
     setTransactions("Trades");
     localStorage.removeItem(SESSION_KEY);
@@ -303,7 +319,7 @@ export default function App() {
     setLeagueName(opt.label);
     setLeagueType(opt.dynasty);
     setLeaguePositions(opt.roster);
-    fetchAvailableYears(opt.label);
+    fetchAvailableYears(opt.label, opt.id);
   };
 
   // ── Data fetching ─────────────────────────────────────────────────────────────
@@ -320,24 +336,88 @@ export default function App() {
       setLeagueId(""); setLeagueName(""); setLeagueDropdown([]); setDropdownTeams([]);
       setTeams({}); setNewTeam("All Teams"); setTrades([]); setTransactions("Trades");
       setKey([]); setUser(value); setUserId(json.user_id);
-      setAvailableYears(["2026"]); setYear("2026"); setWeekChecker(false); setMatchups([]);
+      setAvailableYears(["2026"]); setLeagueIdByYear({}); setYear("2026"); setWeekChecker(false); setMatchups([]);
     } catch {
       alert(`Nothing matches with the username "${value}".`);
     }
   };
 
-  const fetchAvailableYears = async (selectedLeagueName) => {
+  // Finds every season of the selected league and combines three strategies:
+  //  1. Walking Sleeper's previous_league_id chain from the selected season
+  //     (works even if the league was renamed between seasons).
+  //  2. Matching the league's name among the user's leagues for each year —
+  //     exactly, then ignoring years/punctuation ("2025 Work League" and
+  //     "Work League" are the same league).
+  //  3. For leagues that were re-created each year (no chain, new name): the
+  //     one league that year with the same size, roster slots and type.
+  // 2 and 3 also find seasons NEWER than the selected one.
+  const fetchAvailableYears = async (selectedLeagueName, selectedLeagueId) => {
     if (!idUser) return;
-    const yearsToCheck = ["2026", "2025", "2024", "2023", "2022", "2021"];
-    try {
-      const results = await Promise.all(
+    const byYear = {};
+    const thisYear = new Date().getFullYear();
+    const yearsToCheck = Array.from({ length: thisYear - 2016 }, (_, i) => String(thisYear - i));
+    const normName = (n = "") =>
+      n.toLowerCase().replace(/\b(19|20)\d{2}\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+    const fingerprint = (l) =>
+      JSON.stringify([
+        l?.total_rosters,
+        (l?.roster_positions || []).join(","),
+        (l?.settings?.taxi_slots || 0) > 0,
+        l?.settings?.type,
+      ]);
+
+    const getLeague = (id) =>
+      fetch(`https://api.sleeper.app/v1/league/${id}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+
+    let selectedInfo = null;
+    const walkChain = async () => {
+      let id = selectedLeagueId;
+      for (let hops = 0; id && id !== "0" && hops < 15; hops++) {
+        const info = await getLeague(id);
+        if (!info) break;
+        if (hops === 0) selectedInfo = info;
+        byYear[String(info.season)] = id;
+        id = info.previous_league_id;
+      }
+    };
+
+    const matchByName = () => {
+      const targetName = normName(selectedLeagueName);
+      const targetPrint = selectedInfo ? fingerprint(selectedInfo) : null;
+      return Promise.all(
         yearsToCheck.map((y) =>
           fetch(`https://api.sleeper.app/v1/user/${idUser}/leagues/nfl/${y}`)
             .then((r) => (r.ok ? r.json() : []))
-            .then((leagues) => (leagues.some((l) => l.name === selectedLeagueName) ? y : null))
+            .then((leagues) => {
+              if (byYear[y]) return;
+              const list = leagues || [];
+              const hit =
+                list.find((l) => l.name === selectedLeagueName) ||
+                list.find((l) => normName(l.name) === targetName);
+              if (hit) {
+                byYear[y] = hit.league_id;
+                return;
+              }
+              if (!targetPrint) return;
+              const claimed = new Set(Object.values(byYear));
+              const similar = list.filter((l) => !claimed.has(l.league_id) && fingerprint(l) === targetPrint);
+              if (similar.length === 1) byYear[y] = similar[0].league_id;
+            })
+            .catch(() => {})
         )
       );
-      setAvailableYears(results.filter(Boolean).sort((a, b) => b - a));
+    };
+
+    try {
+      await walkChain(); // first, so the name/shape matching knows which seasons are taken
+      await matchByName();
+      const years = Object.keys(byYear).sort((a, b) => b - a);
+      if (years.length) {
+        setLeagueIdByYear(byYear);
+        setAvailableYears(years);
+      }
     } catch (err) {
       console.error("Failed to fetch available years:", err);
     }
@@ -349,8 +429,11 @@ export default function App() {
     const fetchLeagues = async () => {
       try {
         const res = await fetch(`https://api.sleeper.app/v1/user/${idUser}/leagues/nfl/${year}`);
-        const leagues = await res.json();
-        if (!leagues?.length) { alert(`User "${user}" has no leagues.`); return; }
+        const leagues = (await res.json()) || [];
+        // A season found through the league's own history is used even when
+        // the user's league list for that year doesn't include it.
+        const knownForYear = leagueName ? leagueIdByYearRef.current[year] : undefined;
+        if (!leagues.length && !knownForYear) { alert(`User "${user}" has no leagues.`); return; }
 
         const temp = leagues.map((l) => ({
           label: l.name,
@@ -359,9 +442,12 @@ export default function App() {
           roster: l.roster_positions.filter((p) => p !== "BN"),
         }));
 
+        // The season map built from the league's history wins over a plain
+        // name match: it also covers renamed and re-created leagues.
         const match = temp.find((l) => l.label === leagueName);
-        if (match) {
-          setLeagueId(match.id);
+        const knownId = knownForYear ?? match?.id;
+        if (knownId) {
+          setLeagueId(knownId);
         } else {
           setLeagueId(""); setLeagueDropdown(""); setLeagueType(""); setTrades([]); setKey([]);
         }
@@ -382,7 +468,7 @@ export default function App() {
   useEffect(() => {
     if (!leagueId) return;
     setKey([]); setTeams({}); setDropdownTeams([]); setTrades([]);
-    setFreeAgents([]); setRosters([]); setNewTeam(""); setDynastyPicks([]);
+    setFreeAgents([]); setRosters([]); setAllRosters([]); setNewTeam(""); setDynastyPicks([]);
     setContractsByTeam({});
     const isActualLeagueSwitch =
       prevLeagueNameRef.current !== null && prevLeagueNameRef.current !== leagueName;
@@ -397,7 +483,7 @@ export default function App() {
   // depends on year-switching also producing a new leagueId), check this
   // directly so an out-of-date view can never linger.
   useEffect(() => {
-    if (!isCurrentSeason && transaction === "Cap Calculator") {
+    if (!isCurrentSeason && (transaction === "Cap Calculator" || transaction === "Trade Builder")) {
       setTransactions("Trades");
     }
   }, [isCurrentSeason, transaction]);
@@ -612,6 +698,7 @@ export default function App() {
         }));
 
         setRosters(roster);
+        setAllRosters(roster);
         setTeams(teamsMap);
         setKey(keyArr);
         setDropdownTeams(dropdownTeams);
@@ -649,14 +736,33 @@ export default function App() {
     const years = [currentYear, currentYear + 1, currentYear + 2];
     const rosterId = newTeam && newTeam !== "All Teams" ? getKeyByValue(teams, newTeam) : null;
 
-    getDynastyPicks(leagueId, rosterId, years, rosters.length)
+    getDynastyPicks(leagueId, rosterId, years, allRosters.length || rosters.length)
       .then(setDynastyPicks)
       .catch((err) => console.error("Failed to fetch dynasty picks:", err));
-  }, [leagueId, leagueType, newTeam, rosters, year]);
+  }, [leagueId, leagueType, newTeam, rosters, allRosters, year]);
+
+  // Every team's tradable picks for the Trade Builder: the next three seasons
+  // (the current season's picks can't be traded — Constitution 4.1b1).
+  useEffect(() => {
+    if (!leagueId || iflLocked || transaction !== "Trade Builder" || !allRosters.length) return;
+    let cancelled = false;
+    const base = parseInt(year, 10);
+    getDynastyPicks(leagueId, null, [base + 1, base + 2, base + 3], allRosters.length)
+      .then((p) => {
+        if (!cancelled) setTradePicks(p);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch tradable picks:", err);
+        if (!cancelled) setTradePicks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [leagueId, iflLocked, transaction, allRosters, year]);
 
   // Earlier seasons' pickups, for pricing dropped players on multi-year deals.
   useEffect(() => {
-    if (!leagueId || iflLocked || leagueName !== IFL_LEAGUE_NAME || !isCurrentSeason || transaction !== "Rosters and Records") return;
+    if (!leagueId || iflLocked || leagueName !== IFL_LEAGUE_NAME || !isCurrentSeason || (transaction !== "Rosters and Records" && transaction !== "Trade Builder")) return;
     let cancelled = false;
     loadPriorPickups(leagueId).then((h) => {
       if (!cancelled) setPriorHistory(h);
@@ -676,13 +782,13 @@ export default function App() {
       leagueName === IFL_LEAGUE_NAME &&
       !iflLocked &&
       isCurrentSeason &&
-      (transaction === "Rosters and Records" || transaction === "Cap Calculator");
-    if (!needsContracts || !rosters.length) return;
+      (transaction === "Rosters and Records" || transaction === "Cap Calculator" || transaction === "Trade Builder");
+    if (!needsContracts || !allRosters.length) return;
     let cancelled = false;
 
     const load = async () => {
       setContractsLoading(true);
-      const teamNames = [...new Set(rosters.map((r) => r.team_name).filter(Boolean))];
+      const teamNames = [...new Set(allRosters.map((r) => r.team_name).filter(Boolean))];
       const entries = await Promise.all(
         teamNames.map(async (name) => {
           try {
@@ -701,9 +807,230 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [transaction, rosters, iflLocked]);
+  }, [transaction, allRosters, iflLocked]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
+
+  // Cap data for one team: roster rows with costs, dead cap, and per-year totals.
+  // Shared by Rosters and Records and the Trade Builder.
+  const computeTeamCap = (roster) => {
+      const playerList = roster.players || [];
+      const irList = roster.reserve || [];
+      const taxiList = roster.taxi || [];
+
+      // Cap/contract data only ever applies to the current season —
+      // past years show a plain Sleeper roster (Player, Pos, IR,
+      // Taxi) with no cost/contract info at all.
+      const teamContracts = isCurrentSeason ? contractsByTeam[roster.team_name] : null;
+      const contractYears = teamContracts?.years || [];
+
+      // Sleeper has no squad data synced for the IFL — rosters are
+      // managed through the contract sheet / auction rather than
+      // Sleeper's native add/drop flow. When Sleeper comes back
+      // empty (current season only), use the contract sheet itself
+      // as the roster source instead of showing a blank team.
+      const useSheetAsRoster =
+        isCurrentSeason && playerList.length === 0 && !!teamContracts?.players?.length;
+
+      const rows = useSheetAsRoster
+        ? teamContracts.players.map((cp) => ({
+            key: cp.name,
+            name: cp.name,
+            position: cp.position,
+            contractEnd: cp.contractEnd,
+            hitByYear: cp.netCapByYear || {},
+            rawByYear: cp.capByYear || {},
+          }))
+        : playerList.map((pid) => {
+            const p = players[pid];
+            const sheetContract =
+              teamContracts && p
+                ? findContract(teamContracts.players, `${p.first_name} ${p.last_name}`)
+                : null;
+            // A sheet row with no Contract (end year) is unfinished:
+            // its formulas fan the draft price out over five years.
+            // When Sleeper has a pickup price for this owner, trust
+            // that instead, for the current season only.
+            const sleeperPrice = pickupCosts[roster.roster_id]?.[pid] ?? pickupCosts.byPlayer?.[pid];
+            const sheetIncomplete = !!sheetContract && !sheetContract.contractEnd && sleeperPrice != null;
+            const contract = sheetIncomplete ? null : sheetContract;
+            // No sheet contract: fall back to what Sleeper says
+            // the player cost (auction price / FAAB bid), charged
+            // to the current season.
+            const paid = !contract && teamContracts
+              ? pickupCosts[roster.roster_id]?.[pid] ?? pickupCosts.byPlayer?.[pid]
+              : null;
+            return {
+              key: pid,
+              name: p ? `${p.first_name} ${p.last_name}` : "",
+              position: p?.position ?? "",
+              contractEnd: contract?.contractEnd ?? (sheetIncomplete ? contractYears[0] : ""),
+              hitByYear: (() => {
+                const base = contract ? { ...(contract.netCapByYear || {}) } : {};
+                const y0 = contractYears[0];
+                if (teamContracts && y0 && base[y0] == null) {
+                  // Sheet has no cost for this player: use the sheet's
+                  // draft price if present, otherwise Sleeper's
+                  // latest pickup price.
+                  const sl = pickupCosts[roster.roster_id]?.[pid] ?? pickupCosts.byPlayer?.[pid];
+                  if (contract?.draftPrice) base[y0] = contract.draftPrice;
+                  else if (sl != null) base[y0] = sl;
+                }
+                return base;
+              })(),
+              rawByYear: contract?.capByYear || {},
+              fromSleeper: paid != null,
+              history: !contract
+                ? (pickupCosts.history?.[roster.roster_id]?.[pid] || []).map(
+                    (h) => `$${h.amt} on ${h.time ? new Date(h.time).toLocaleDateString() : "unknown date"}`
+                  )
+                : [],
+              missingCost: !!teamContracts && !!p && !contract && paid == null,
+            };
+          });
+
+      // ── Dropped players → dead cap ──
+      // Each dropped player is priced from the sheet: first its
+      // "Dead Cap" row (already inside the sheet's totals), else
+      // its still-listed contract row (not yet in the totals, so
+      // it is subtracted from Remaining here). Anyone currently
+      // back on the Sleeper roster is not dead cap.
+      const deadRows = [];
+      if (teamContracts) {
+        const seen = new Set();
+        // Only the most recent drop of each player counts.
+        const latestDrops = new Map();
+        (dropsByRoster[roster.roster_id] || []).forEach((d) => latestDrops.set(d.player_id, d));
+        [...latestDrops.values()].forEach((d) => {
+          const p = players[d.player_id];
+          if (!p || seen.has(d.player_id) || playerList.includes(d.player_id)) return;
+          const fullName = `${p.first_name} ${p.last_name}`;
+          if (DROPPED_EXCEPTION_SET.has(exceptionKey(fullName))) return;
+          seen.add(d.player_id);
+          const dead = findDeadCapEntry(teamContracts.deadCap, fullName);
+          const live = findContract(teamContracts.players, fullName);
+          // The owner's acquisitions across all seasons (oldest
+          // first); the one at or before the drop is the deal
+          // that was being carried when the player was cut.
+          const ownerHist = [
+            ...(priorHistory[roster.roster_id]?.[d.player_id] || []),
+            ...(pickupCosts.history?.[roster.roster_id]?.[d.player_id] || []),
+          ].sort((x, y) => x.time - y.time);
+          const before = ownerHist.filter((h) => h.time <= d.time);
+          const acq = (before.length ? before : ownerHist).slice(-1)[0];
+
+          // A signing price escalates 18% for every season since it
+          // was signed, rounded to the nearest dollar. It runs to
+          // the contract's end year when the sheet lists one,
+          // otherwise for the current season only.
+          const y0 = Number(contractYears[0]);
+          const endYear = Math.max(Number(live?.contractEnd) || y0, y0);
+          const liveComplete = !!live && live.draftPrice > 0 && !!live.draftedYear && !!live.contractEnd;
+          const base = liveComplete ? live.draftPrice : acq?.amt;
+          const baseSeason = liveComplete ? Number(live.draftedYear) : acq?.season;
+          const escalated = {};
+          if (base != null && baseSeason) {
+            contractYears.forEach((y) => {
+              const yn = Number(y);
+              if (yn >= y0 && yn <= endYear && yn >= baseSeason)
+                escalated[y] = Math.round(base * Math.pow(1.18, yn - baseSeason));
+            });
+          }
+
+          // A sheet dead-cap row that still shows the original
+          // signing price (not yet escalated) is stale: the
+          // escalated amount for this season is the real one.
+          const deadStale =
+            !!dead && base != null && escalated[contractYears[0]] != null &&
+            dead.byYear?.[contractYears[0]] === base &&
+            escalated[contractYears[0]] !== base;
+          if (dead && !deadStale) {
+            deadRows.push({ name: fullName, week: d.week, byYear: dead.byYear, inSheet: true, sheetNames: dead.names });
+          } else if (Object.keys(escalated).length) {
+            deadRows.push({
+              name: fullName,
+              week: d.week,
+              byYear: escalated,
+              inSheet: false,
+              fromSleeper: !liveComplete,
+              sheetNames: dead ? dead.names : [],
+            });
+          } else if (live) {
+            deadRows.push({ name: fullName, week: d.week, byYear: live.netCapByYear || {}, inSheet: false });
+          } else {
+            const paid = acq?.amt ?? pickupCosts.byPlayer?.[d.player_id];
+            deadRows.push({
+              name: fullName,
+              week: d.week,
+              byYear: paid != null ? { [contractYears[0]]: paid } : null,
+              inSheet: false,
+              fromSleeper: paid != null,
+            });
+          }
+        });
+      }
+      // Sheet dead-cap rows that no Sleeper drop matched (offseason
+      // cuts, trades, etc.). They are listed so the table adds up
+      // to the Dead cap total; rows for players on the exception
+      // list are left out of both.
+      const unmatchedSheetDead = (teamContracts?.deadCap || []).filter(
+        (e) =>
+          !DROPPED_EXCEPTION_SET.has(exceptionKey(e.name)) &&
+          !deadRows.some((r) => (r.sheetNames || []).includes(e.name) || (r.inSheet && namesMatch(r.name, e.name)))
+      );
+      // One player can have several sheet rows (e.g. a +$114
+      // cut and a -$28 discount covered by another team), so
+      // combine them per player: 114 - 28 = $86, not two rows.
+      const sheetOnlyRows = [];
+      unmatchedSheetDead.forEach((e) => {
+        const same = sheetOnlyRows.find((r) => namesMatch(r.name, e.name));
+        if (same) {
+          Object.entries(e.byYear).forEach(([y, v]) => {
+            same.byYear[y] = (same.byYear[y] || 0) + v;
+          });
+        } else {
+          sheetOnlyRows.push({
+            name: e.name,
+            week: null,
+            byYear: { ...e.byYear },
+            inSheet: true,
+            sheetOnly: true,
+          });
+        }
+      });
+      sheetOnlyRows.forEach((r) => deadRows.push(r));
+      // Final safety net: if two rows still describe the same
+      // player (misspelling, "SF" vs "San Francisco 49ers"), keep
+      // one — preferring a row from an actual Sleeper drop.
+      const uniqueDead = [];
+      deadRows.forEach((row) => {
+        const at = uniqueDead.findIndex((u) => namesMatch(u.name, row.name));
+        if (at === -1) uniqueDead.push(row);
+        else if (uniqueDead[at].sheetOnly && !row.sheetOnly) uniqueDead[at] = row;
+      });
+      deadRows.length = 0;
+      uniqueDead.forEach((r) => deadRows.push(r));
+      const droppedNames = new Set(deadRows.filter((d) => !d.inSheet && d.byYear).map((d) => d.name));
+      const activeRows = rows.filter((r) => !(useSheetAsRoster && droppedNames.has(r.name)));
+      const maxLen = Math.max(activeRows.length, irList.length, taxiList.length);
+
+      // Spent/Remaining are calculated here from the data shown
+      // in the tables below, not read from the sheet's totals:
+      //   active contracts (each row's cost that year)
+      // + dead cap (every dead-cap row on the sheet, plus dropped
+      //   players priced from Sleeper / their still-listed row)
+      // Remaining = cap - spent.
+      const budgetByYear = {};
+      contractYears.forEach((y) => {
+        const active = activeRows.reduce((sum, r) => sum + (r.hitByYear?.[y] || 0), 0);
+        // Every row in the Dead cap table below, so the table
+        // always adds up to this total.
+        const dead = deadRows.reduce((sum, d) => sum + (d.byYear?.[y] || 0), 0);
+        budgetByYear[y] = { active, dead, spent: active + dead, remaining: CAP_TOTAL - (active + dead) };
+      });
+
+    return { playerList, irList, taxiList, teamContracts, contractYears, useSheetAsRoster, rows, deadRows, unmatchedSheetDead, sheetOnlyRows, uniqueDead, droppedNames, activeRows, maxLen, budgetByYear };
+  };
 
   return (
     <div>
@@ -773,12 +1100,16 @@ export default function App() {
         </div>
 
         {iflLocked && user ? (
-          <IflPasswordGate
-            onUnlock={() => {
-              grantIflAccess();
-              setIflUnlocked(true);
-            }}
-          />
+          iflAccessChecked ? (
+            <IflPasswordGate
+              onUnlock={async () => {
+                await grantIflAccess();
+                setIflUnlocked(true);
+              }}
+            />
+          ) : (
+            <p style={{ textAlign: "center" }}>Checking access…</p>
+          )
         ) : loading ? (
           <p style={{ textAlign: "center" }}>Loading...</p>
         ) : user && leagueId ? (
@@ -798,13 +1129,13 @@ export default function App() {
                         <th>Team</th>
                         <th>W</th>
                         <th>L</th>
-                        {rosters.some((r) => r.ties > 0) && <th>T</th>}
+                        {allRosters.some((r) => r.ties > 0) && <th>T</th>}
                         <th>PF</th>
                         <th>PA</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {[...rosters]
+                      {[...allRosters]
                         .sort((a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor)
                         .map((r, i) => (
                           <tr key={r.roster_id}>
@@ -814,7 +1145,7 @@ export default function App() {
                             </td>
                             <td>{r.wins}</td>
                             <td>{r.losses}</td>
-                            {rosters.some((x) => x.ties > 0) && <td>{r.ties}</td>}
+                            {allRosters.some((x) => x.ties > 0) && <td>{r.ties}</td>}
                             <td>{r.pointsFor.toFixed(2)}</td>
                             <td>{r.pointsAgainst.toFixed(2)}</td>
                           </tr>
@@ -874,7 +1205,7 @@ export default function App() {
 
               {/* ── Hall of Champions ── */}
               {transaction === "Hall of Champions" && (
-                <HallOfChampions idUser={idUser} leagueName={leagueName} year={year} players={players} />
+                <HallOfChampions idUser={idUser} leagueName={leagueName} leagueIdByYear={leagueIdByYear} year={year} players={players} />
               )}
 
               {/* ── Trades ── */}
@@ -1020,218 +1351,7 @@ export default function App() {
                 <>
                   {contractsLoading && <p style={{ textAlign: "center" }}>Loading contract data…</p>}
                   {rosters.map((roster, rosterIdx) => {
-                    const playerList = roster.players || [];
-                    const irList = roster.reserve || [];
-                    const taxiList = roster.taxi || [];
-
-                    // Cap/contract data only ever applies to the current season —
-                    // past years show a plain Sleeper roster (Player, Pos, IR,
-                    // Taxi) with no cost/contract info at all.
-                    const teamContracts = isCurrentSeason ? contractsByTeam[roster.team_name] : null;
-                    const contractYears = teamContracts?.years || [];
-
-                    // Sleeper has no squad data synced for the IFL — rosters are
-                    // managed through the contract sheet / auction rather than
-                    // Sleeper's native add/drop flow. When Sleeper comes back
-                    // empty (current season only), use the contract sheet itself
-                    // as the roster source instead of showing a blank team.
-                    const useSheetAsRoster =
-                      isCurrentSeason && playerList.length === 0 && !!teamContracts?.players?.length;
-
-                    const rows = useSheetAsRoster
-                      ? teamContracts.players.map((cp) => ({
-                          name: cp.name,
-                          position: cp.position,
-                          contractEnd: cp.contractEnd,
-                          hitByYear: cp.netCapByYear || {},
-                          rawByYear: cp.capByYear || {},
-                        }))
-                      : playerList.map((pid) => {
-                          const p = players[pid];
-                          const sheetContract =
-                            teamContracts && p
-                              ? findContract(teamContracts.players, `${p.first_name} ${p.last_name}`)
-                              : null;
-                          // A sheet row with no Contract (end year) is unfinished:
-                          // its formulas fan the draft price out over five years.
-                          // When Sleeper has a pickup price for this owner, trust
-                          // that instead, for the current season only.
-                          const sleeperPrice = pickupCosts[roster.roster_id]?.[pid] ?? pickupCosts.byPlayer?.[pid];
-                          const sheetIncomplete = !!sheetContract && !sheetContract.contractEnd && sleeperPrice != null;
-                          const contract = sheetIncomplete ? null : sheetContract;
-                          // No sheet contract: fall back to what Sleeper says
-                          // the player cost (auction price / FAAB bid), charged
-                          // to the current season.
-                          const paid = !contract && teamContracts
-                            ? pickupCosts[roster.roster_id]?.[pid] ?? pickupCosts.byPlayer?.[pid]
-                            : null;
-                          return {
-                            name: p ? `${p.first_name} ${p.last_name}` : "",
-                            position: p?.position ?? "",
-                            contractEnd: contract?.contractEnd ?? (sheetIncomplete ? contractYears[0] : ""),
-                            hitByYear: (() => {
-                              const base = contract ? { ...(contract.netCapByYear || {}) } : {};
-                              const y0 = contractYears[0];
-                              if (teamContracts && y0 && base[y0] == null) {
-                                // Sheet has no cost for this player: use the sheet's
-                                // draft price if present, otherwise Sleeper's
-                                // latest pickup price.
-                                const sl = pickupCosts[roster.roster_id]?.[pid] ?? pickupCosts.byPlayer?.[pid];
-                                if (contract?.draftPrice) base[y0] = contract.draftPrice;
-                                else if (sl != null) base[y0] = sl;
-                              }
-                              return base;
-                            })(),
-                            rawByYear: contract?.capByYear || {},
-                            fromSleeper: paid != null,
-                            history: !contract
-                              ? (pickupCosts.history?.[roster.roster_id]?.[pid] || []).map(
-                                  (h) => `$${h.amt} on ${h.time ? new Date(h.time).toLocaleDateString() : "unknown date"}`
-                                )
-                              : [],
-                            missingCost: !!teamContracts && !!p && !contract && paid == null,
-                          };
-                        });
-
-                    // ── Dropped players → dead cap ──
-                    // Each dropped player is priced from the sheet: first its
-                    // "Dead Cap" row (already inside the sheet's totals), else
-                    // its still-listed contract row (not yet in the totals, so
-                    // it is subtracted from Remaining here). Anyone currently
-                    // back on the Sleeper roster is not dead cap.
-                    const deadRows = [];
-                    if (teamContracts) {
-                      const seen = new Set();
-                      // Only the most recent drop of each player counts.
-                      const latestDrops = new Map();
-                      (dropsByRoster[roster.roster_id] || []).forEach((d) => latestDrops.set(d.player_id, d));
-                      [...latestDrops.values()].forEach((d) => {
-                        const p = players[d.player_id];
-                        if (!p || seen.has(d.player_id) || playerList.includes(d.player_id)) return;
-                        const fullName = `${p.first_name} ${p.last_name}`;
-                        if (DROPPED_EXCEPTION_SET.has(exceptionKey(fullName))) return;
-                        seen.add(d.player_id);
-                        const dead = findDeadCapEntry(teamContracts.deadCap, fullName);
-                        const live = findContract(teamContracts.players, fullName);
-                        // The owner's acquisitions across all seasons (oldest
-                        // first); the one at or before the drop is the deal
-                        // that was being carried when the player was cut.
-                        const ownerHist = [
-                          ...(priorHistory[roster.roster_id]?.[d.player_id] || []),
-                          ...(pickupCosts.history?.[roster.roster_id]?.[d.player_id] || []),
-                        ].sort((x, y) => x.time - y.time);
-                        const before = ownerHist.filter((h) => h.time <= d.time);
-                        const acq = (before.length ? before : ownerHist).slice(-1)[0];
-
-                        // A signing price escalates 18% for every season since it
-                        // was signed, rounded to the nearest dollar. It runs to
-                        // the contract's end year when the sheet lists one,
-                        // otherwise for the current season only.
-                        const y0 = Number(contractYears[0]);
-                        const endYear = Math.max(Number(live?.contractEnd) || y0, y0);
-                        const liveComplete = !!live && live.draftPrice > 0 && !!live.draftedYear && !!live.contractEnd;
-                        const base = liveComplete ? live.draftPrice : acq?.amt;
-                        const baseSeason = liveComplete ? Number(live.draftedYear) : acq?.season;
-                        const escalated = {};
-                        if (base != null && baseSeason) {
-                          contractYears.forEach((y) => {
-                            const yn = Number(y);
-                            if (yn >= y0 && yn <= endYear && yn >= baseSeason)
-                              escalated[y] = Math.round(base * Math.pow(1.18, yn - baseSeason));
-                          });
-                        }
-
-                        // A sheet dead-cap row that still shows the original
-                        // signing price (not yet escalated) is stale: the
-                        // escalated amount for this season is the real one.
-                        const deadStale =
-                          !!dead && base != null && escalated[contractYears[0]] != null &&
-                          dead.byYear?.[contractYears[0]] === base &&
-                          escalated[contractYears[0]] !== base;
-                        if (dead && !deadStale) {
-                          deadRows.push({ name: fullName, week: d.week, byYear: dead.byYear, inSheet: true, sheetNames: dead.names });
-                        } else if (Object.keys(escalated).length) {
-                          deadRows.push({
-                            name: fullName,
-                            week: d.week,
-                            byYear: escalated,
-                            inSheet: false,
-                            fromSleeper: !liveComplete,
-                            sheetNames: dead ? dead.names : [],
-                          });
-                        } else if (live) {
-                          deadRows.push({ name: fullName, week: d.week, byYear: live.netCapByYear || {}, inSheet: false });
-                        } else {
-                          const paid = acq?.amt ?? pickupCosts.byPlayer?.[d.player_id];
-                          deadRows.push({
-                            name: fullName,
-                            week: d.week,
-                            byYear: paid != null ? { [contractYears[0]]: paid } : null,
-                            inSheet: false,
-                            fromSleeper: paid != null,
-                          });
-                        }
-                      });
-                    }
-                    // Sheet dead-cap rows that no Sleeper drop matched (offseason
-                    // cuts, trades, etc.). They are listed so the table adds up
-                    // to the Dead cap total; rows for players on the exception
-                    // list are left out of both.
-                    const unmatchedSheetDead = (teamContracts?.deadCap || []).filter(
-                      (e) =>
-                        !DROPPED_EXCEPTION_SET.has(exceptionKey(e.name)) &&
-                        !deadRows.some((r) => (r.sheetNames || []).includes(e.name) || (r.inSheet && namesMatch(r.name, e.name)))
-                    );
-                    // One player can have several sheet rows (e.g. a +$114
-                    // cut and a -$28 discount covered by another team), so
-                    // combine them per player: 114 - 28 = $86, not two rows.
-                    const sheetOnlyRows = [];
-                    unmatchedSheetDead.forEach((e) => {
-                      const same = sheetOnlyRows.find((r) => namesMatch(r.name, e.name));
-                      if (same) {
-                        Object.entries(e.byYear).forEach(([y, v]) => {
-                          same.byYear[y] = (same.byYear[y] || 0) + v;
-                        });
-                      } else {
-                        sheetOnlyRows.push({
-                          name: e.name,
-                          week: null,
-                          byYear: { ...e.byYear },
-                          inSheet: true,
-                          sheetOnly: true,
-                        });
-                      }
-                    });
-                    sheetOnlyRows.forEach((r) => deadRows.push(r));
-                    // Final safety net: if two rows still describe the same
-                    // player (misspelling, "SF" vs "San Francisco 49ers"), keep
-                    // one — preferring a row from an actual Sleeper drop.
-                    const uniqueDead = [];
-                    deadRows.forEach((row) => {
-                      const at = uniqueDead.findIndex((u) => namesMatch(u.name, row.name));
-                      if (at === -1) uniqueDead.push(row);
-                      else if (uniqueDead[at].sheetOnly && !row.sheetOnly) uniqueDead[at] = row;
-                    });
-                    deadRows.length = 0;
-                    uniqueDead.forEach((r) => deadRows.push(r));
-                    const droppedNames = new Set(deadRows.filter((d) => !d.inSheet && d.byYear).map((d) => d.name));
-                    const activeRows = rows.filter((r) => !(useSheetAsRoster && droppedNames.has(r.name)));
-                    const maxLen = Math.max(activeRows.length, irList.length, taxiList.length);
-
-                    // Spent/Remaining are calculated here from the data shown
-                    // in the tables below, not read from the sheet's totals:
-                    //   active contracts (each row's cost that year)
-                    // + dead cap (every dead-cap row on the sheet, plus dropped
-                    //   players priced from Sleeper / their still-listed row)
-                    // Remaining = cap - spent.
-                    const budgetByYear = {};
-                    contractYears.forEach((y) => {
-                      const active = activeRows.reduce((sum, r) => sum + (r.hitByYear?.[y] || 0), 0);
-                      // Every row in the Dead cap table below, so the table
-                      // always adds up to this total.
-                      const dead = deadRows.reduce((sum, d) => sum + (d.byYear?.[y] || 0), 0);
-                      budgetByYear[y] = { active, dead, spent: active + dead, remaining: CAP_TOTAL - (active + dead) };
-                    });
+                    const { irList, taxiList, teamContracts, contractYears, useSheetAsRoster, deadRows, activeRows, maxLen, budgetByYear } = computeTeamCap(roster);
 
                     return (
                       <div key={rosterIdx} className="my-4">
@@ -1471,6 +1591,44 @@ export default function App() {
               {transaction === "Cap Calculator" && (
                 <CapCalculator contractsByTeam={contractsByTeam} currentYear={year} />
               )}
+
+              {/* ── Trade Builder ── */}
+              {transaction === "Trade Builder" && (() => {
+                const teamsCap = allRosters
+                  .filter((r) => r.team_name)
+                  .map((r) => {
+                    const c = computeTeamCap(r);
+                    return {
+                      id: r.roster_id,
+                      name: r.team_name,
+                      rows: c.activeRows,
+                      budgetByYear: c.budgetByYear,
+                      years: c.contractYears,
+                    };
+                  });
+                const ready = teamsCap.length > 1 && teamsCap.every((t) => t.years.length > 0);
+                if (!ready) {
+                  return <p style={{ textAlign: "center" }}>{contractsLoading ? "Loading contract data…" : "Waiting for every team's contract data…"}</p>;
+                }
+                const picks = {};
+                tradePicks.forEach((pk) => {
+                  (picks[pk.currentOwner] = picks[pk.currentOwner] || []).push({
+                    key: `${pk.season}-${pk.round}-${pk.originalTeam}`,
+                    season: pk.season,
+                    round: pk.round,
+                    originalTeam: pk.originalTeam,
+                  });
+                });
+                return (
+                  <TradeBuilder
+                    key={teamsCap.map((t) => t.id).join("-")}
+                    picks={picks}
+                    teams={teamsCap}
+                    years={teamsCap[0].years}
+                    capTotal={CAP_TOTAL}
+                  />
+                );
+              })()}
             </div>
 
             {/* ── Team / Username key ── */}
