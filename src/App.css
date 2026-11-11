@@ -535,8 +535,8 @@
     border: 1px solid var(--turf-line);
     color: var(--chalk-dim);
   }
-  .deal-net.down { color: var(--flag); border-color: var(--flag); }
-  .deal-net.up { color: var(--good); border-color: var(--good); }
+  .deal-net.up { color: var(--flag); border-color: var(--flag); }
+  .deal-net.down { color: var(--good); border-color: var(--good); }
   
   .deal-section { padding: 10px 16px 12px; border-left: 4px solid transparent; }
   .deal-section.in { border-left-color: var(--good); }

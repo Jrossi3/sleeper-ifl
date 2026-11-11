@@ -227,7 +227,7 @@ export default function TradeBuilder({ teams, years, capTotal, picks = {} }) {
                   <header className="deal-head">
                     <span className="deal-team">{teamById[id].name}</span>
                     <span className={`deal-net ${delta > 0 ? "up" : delta < 0 ? "down" : ""}`}>
-                      {currentYear} cap {delta > 0 ? "+" : delta < 0 ? "−" : ""}${Math.abs(delta)}
+                      {currentYear} cap {delta > 0 ? "−" : delta < 0 ? "+" : ""}${Math.abs(delta)}
                     </span>
                   </header>
 
