@@ -806,10 +806,25 @@ export default function App() {
           }))
         : playerList.map((pid) => {
             const p = players[pid];
-            const sheetContract =
-              teamContracts && p
-                ? findContract(teamContracts.players, `${p.first_name} ${p.last_name}`)
-                : null;
+            const fullPlayerName = p ? `${p.first_name} ${p.last_name}` : "";
+            const ownSheetContract =
+              teamContracts && p ? findContract(teamContracts.players, fullPlayerName) : null;
+            // Just traded: Sleeper already has the player here, but this
+            // team's sheet tab hasn't been updated, so he's still listed on
+            // another team's tab. His contract travels with him — use it.
+            let tradedFrom = null;
+            let sheetContract = ownSheetContract;
+            if (!ownSheetContract && teamContracts && p) {
+              for (const [otherTeam, other] of Object.entries(contractsByTeam)) {
+                if (otherTeam === roster.team_name || !other?.players) continue;
+                const found = findContract(other.players, fullPlayerName);
+                if (found) {
+                  sheetContract = found;
+                  tradedFrom = otherTeam;
+                  break;
+                }
+              }
+            }
             // A sheet row with no Contract (end year) is unfinished:
             // its formulas fan the draft price out over five years.
             // When Sleeper has a pickup price for this owner, trust
@@ -843,6 +858,7 @@ export default function App() {
               })(),
               rawByYear: contract?.capByYear || {},
               fromSleeper: paid != null,
+              tradedFrom: contract ? tradedFrom : null,
               history: !contract
                 ? (pickupCosts.history?.[roster.roster_id]?.[pid] || []).map(
                     (h) => `$${h.amt} on ${h.time ? new Date(h.time).toLocaleDateString() : "unknown date"}`
@@ -1402,6 +1418,8 @@ export default function App() {
                                             if (hit != null && isOffset) text = `$${raw} on the sheet, adjusted to $${hit} by a dead-cap / trade offset`;
                                             else if (hit != null && row?.fromSleeper)
                                               text = `Cost from Sleeper (not on the sheet). Pickups by this owner: ${row.history?.join(", ") || "none"}`;
+                                            else if (hit != null && row?.tradedFrom)
+                                              text = `Not on this team's sheet tab yet (recent trade) — contract taken from ${row.tradedFrom}'s tab`;
                                             else if (hit != null) text = "Cost from the contract sheet";
                                             else if (row?.missingCost && y === contractYears[0])
                                               text = "No cost found on the sheet or in Sleeper";
